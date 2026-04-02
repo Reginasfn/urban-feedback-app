@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Моя карта</title>
+
+        <script>
+            let map;
+
+            function initMap() {
+                ymaps.ready(function(){
+                    map = new ymaps.Map("map", {
+                        center: [54.7388, 55.9721],
+                        zoom: 12,
+                        restrictMapArea: [
+                            [54.5, 55.7],
+                            [55.0, 56.3]
+                        ]
+                    });
+                });
+
+                console.log("Карта загружена блин");
+            }
+
+            async function loadObjects(type) {
+                if (!map || !ymaps) return;
+
+                console.log("Клик:", type);
+                map.geoObjects.removeAll();
+
+                try {
+                    const response = await fetch(`/objects?type=${type}`);
+                    const objects = await response.json();
+
+                    objects.forEach(obj => {
+                        console.log("Объект:", obj);
+
+                        const placemark = new ymaps.Placemark(obj.coords, {
+                            balloonContent: `
+                                <b>${obj.name}</b><br>
+                                ${obj.address}<br>
+                                <button onclick="alert('Оценить')">Оценить</button>
+                            `
+                        });
+
+                        map.geoObjects.add(placemark);
+                    });
+                } catch (err) {
+                    console.error("Ошибка при загрузке объектов:", err);
+                }
+            }
+        </script>
+        
+        <script src="https://api-maps.yandex.ru/2.1/?apikey={{ api_key }}&lang=ru_RU" 
+            type="text/javascript" 
+            onload="initMap()">
+        </script>    
+    </head>
+
+    <body>
+        <h2>Тестовый запуск картишки яндекса</h2>
+        <button onclick="loadObjects('Кафе')">Кафе</button>
+        <button onclick="loadObjects('Скамейка')">Скамейки</button>
+
+        <div id="map" style="width: 800px; height: 650px"></div>
+    </body>
+</html>
