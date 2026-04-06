@@ -6,13 +6,11 @@ import os
 import time
 import json
 
-#-----общие настройки-----
 load_dotenv()
 CREATED_BY = 1
 
 TARGET_TYPE = "surveillance"
 
-#-----подключение к бдшке-----
 conn = psycopg2.connect(
     dbname=os.getenv("DB_NAME"),
     user=os.getenv("DB_USER"),
@@ -41,27 +39,22 @@ DICT_NAMES = {
 
 # словарь с ключами для ОСМ
 OSM_KEYS = {
-    # для досуга
     "playground": "leisure",
     "park": "leisure",
     "garden": "leisure",
     
-    # благоустройство
     "cafe": "amenity",
     "bench": "amenity",
     "parking": "amenity",
     "shelter": "amenity",
     "toilet": "amenity",
     
-    # дорога=*
     "bus_stop": "highway",
     "crossing": "highway",
     
-    # искусственные сооружения
     "street_lamp": "man_made",
     "surveillance": "man_made",
     
-    # историческое
     "monument": "historic",
 }
 
@@ -103,7 +96,7 @@ def load_processed_bboxes():
                         bbox = tuple(map(float, line.split(",")))
                         processed.add(bbox)
                     except ValueError:
-                        continue  # пропускаем битые строки
+                        continue
     return processed
 
 # функции
@@ -248,29 +241,29 @@ if __name__ == "__main__":
     osm_key = OSM_KEYS[TARGET_TYPE]
     object_type_name = DICT_NAMES.get(TARGET_TYPE, TARGET_TYPE.title())
 
-    # Загружаем уже обработанные квадраты
+    # загружаем уже обработанные квадраты
     processed_bboxes = load_processed_bboxes()
-    print(f"📁 Загружено {len(processed_bboxes)} обработанных квадратов")
+    print(f"Загружено {len(processed_bboxes)} обработанных квадратов")
 
-    # Счётчики для статистики
+    # для статистики
     total_objects = 0
     total_bboxes = 0
 
-    # ← 5. Список для сбора всех объектов перед вставкой в БД
+    # для сбора всех объектов
     all_objects = []
 
-    # Главный цикл: перебор всех квадратов
+    # перебор всех квадратов
     for bbox in generate_bboxes(CITY_BBOX, STEP):
         total_bboxes += 1
         objs = process_bbox(bbox, STEP, osm_key, TARGET_TYPE, object_type_name)
         total_objects += len(objs)
-        all_objects.extend(objs)  # ← 6. Накопление объектов
+        all_objects.extend(objs)  
 
-        # Прогресс каждые 7 квадратов
+        # результат каждые 7 квадратов
         if total_bboxes % 7 == 0:
             print(f"Обработано {total_bboxes} квадратов, найдено {total_objects} объектов...")
 
-    # Вставка в базу данных
+    # вставка в базу данных
     print("-" * 60)
     if total_objects > 0:
         try:

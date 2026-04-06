@@ -5,6 +5,7 @@
 
         <script>
             let map;
+            let clusterer;
 
             function initMap() {
                 ymaps.ready(function(){
@@ -16,36 +17,73 @@
                             [55.0, 56.3]
                         ]
                     });
-                });
 
-                console.log("Карта загружена блин");
+                    // создаём кластеризатор
+                    clusterer = new ymaps.Clusterer({
+                        preset: 'islands#invertedBlueClusterIcons',
+                        groupByCoordinates: false,
+                        clusterDisableClickZoom: false,
+                        clusterOpenBalloonOnClick: true
+                    });
+
+                    map.geoObjects.add(clusterer);
+
+                    console.log("Карта загружена");
+                });
+            }
+
+            function getColorByType(type) {
+                const colors = {
+                    "Кафе": "red",
+                    "Скамейка": "green",
+                    "Фонарь": "yellow",
+                    "Парк": "darkGreen",
+                    "Беседка": "violet",
+                    "Остановка": "blue",
+                    "Детская площадка": "orange",
+                    "Камера видеонаблюдения": "black"
+                };
+                return colors[type] || "gray";
             }
 
             async function loadObjects(type) {
                 if (!map || !ymaps) return;
 
                 console.log("Клик:", type);
-                map.geoObjects.removeAll();
+
+                clusterer.removeAll(); // очищаем только кластеры
 
                 try {
                     const response = await fetch(`/objects?type=${type}`);
                     const objects = await response.json();
 
-                    objects.forEach(obj => {
-                        console.log("Объект:", obj);
+                    const placemarks = objects.map(obj => {
+                        const color = getColorByType(type);
 
-                        const placemark = new ymaps.Placemark(obj.coords, {
-                            balloonContent: `
-                                <b>${obj.name}</b><br>
-                                ${obj.address}<br>
-                                <button onclick="alert('Оценить')">Оценить</button>
-                            `
-                        });
-
-                        map.geoObjects.add(placemark);
+                        return new ymaps.Placemark(
+                            obj.coords,
+                            {
+                                balloonContent: `
+                                    <div style="font-size:14px">
+                                        <b>${obj.name}</b><br>
+                                        ${obj.address || "Адрес не указан"}<br><br>
+                                        <button onclick="alert('Оценить объект')">
+                                            Оценить
+                                        </button>
+                                    </div>
+                                `
+                            },
+                            {
+                                preset: `islands#icon`,
+                                iconColor: color
+                            }
+                        );
                     });
+
+                    clusterer.add(placemarks);
+
                 } catch (err) {
-                    console.error("Ошибка при загрузке объектов:", err);
+                    console.error("Ошибка:", err);
                 }
             }
         </script>
@@ -92,6 +130,6 @@
             <button onclick="loadObjects('Детская площадка')">Детские площадки</button>
         </div>
 
-        <div id="map" style="width: 800px; height: 650px; margin:0px 0px 0px 300px;"></div>
+        <div id="map" style="width: 1300px; height: 650px; margin:0px 0px 0px 100px;"></div>
     </body>
 </html>
