@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='.')
 
 def get_connection():
     return psycopg2.connect(
@@ -18,7 +18,7 @@ def get_connection():
 
 @app.route("/")
 def index():
-    api_key = os.getenv("YANDEX_API_KEY")  # берём API ключ из .env
+    api_key = os.getenv("YANDEX_API_KEY")
     return render_template("index.html", api_key=api_key)
     
 @app.route("/objects")

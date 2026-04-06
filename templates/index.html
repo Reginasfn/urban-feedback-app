@@ -53,14 +53,45 @@
         <script src="https://api-maps.yandex.ru/2.1/?apikey={{ api_key }}&lang=ru_RU" 
             type="text/javascript" 
             onload="initMap()">
-        </script>    
+        </script>
+
+        <style>
+            .button-group {
+                margin: 10px 290px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            
+            .button-group button {
+                padding: 8px 16px;
+                border: 1px solid #007bff;
+                background-color: white;
+                color: #007bff;
+                font-size: 14px;
+            }
+            
+            .button-group button:hover {
+                background-color: #007bff;
+                color: white;
+            }
+        </style>
     </head>
 
     <body>
-        <h2>Тестовый запуск картишки яндекса</h2>
-        <button onclick="loadObjects('Кафе')">Кафе</button>
-        <button onclick="loadObjects('Скамейка')">Скамейки</button>
+        <h2>Тестовый запуск картишки яндекса и объектов</h2>
+        
+        <div class="button-group">
+            <button onclick="loadObjects('Камера видеонаблюдения')">Камеры</button>
+            <button onclick="loadObjects('Кафе')">Кафе</button>
+            <button onclick="loadObjects('Фонарь')">Фонари</button>
+            <button onclick="loadObjects('Скамейка')">Скамейки</button>
+            <button onclick="loadObjects('Парк')">Парки</button>
+            <button onclick="loadObjects('Беседка')">Беседки</button>
+            <button onclick="loadObjects('Остановка')">Остановки</button>
+            <button onclick="loadObjects('Детская площадка')">Детские площадки</button>
+        </div>
 
-        <div id="map" style="width: 800px; height: 650px"></div>
+        <div id="map" style="width: 800px; height: 650px; margin:0px 0px 0px 300px;"></div>
     </body>
 </html>
