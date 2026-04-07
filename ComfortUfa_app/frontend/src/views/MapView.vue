@@ -5,6 +5,19 @@
       <p class="subtitle">Нажмите на категорию, чтобы увидеть определённые объекты</p>
     </header>
     
+    <!-- Фильтры -->
+    <div class="filters">
+        <button 
+            v-for="category in categories" 
+            :key="category"
+            @click="selectCategory(category)"
+            :class="['filter-btn', { active: selectedCategory === category }]"
+            :style="{ borderColor: getCategoryColor(category) }"
+        >
+            {{ category }}
+        </button>
+    </div>
+
     <div ref="mapContainer" class="map-container"></div>
   </div>
 </template>
@@ -13,6 +26,42 @@
     import { ref, onMounted } from 'vue'
 
     const mapContainer = ref(null) 
+
+    // Состояние
+    const selectedCategory = ref(null)
+
+    // Категории
+    const categories = [
+        'Камера видеонаблюдения',
+        'Кафе',
+        'Фонарь',
+        'Скамейка',
+        'Парк',
+        'Беседка',
+        'Остановка',
+        'Детская площадка'
+    ]
+
+    // Цвета категорий
+    const categoryColors = {
+        'Камера видеонаблюдения': '#1E40AF',
+        'Кафе': '#DC2626',
+        'Фонарь': '#F59E0B',
+        'Скамейка': '#059669',
+        'Парк': '#047857',
+        'Беседка': '#7C3AED',
+        'Остановка': '#2563EB',
+        'Детская площадка': '#F97316'
+    }
+
+    function getCategoryColor(type) {
+        return categoryColors[type] || '#64748B'
+    }
+
+    function selectCategory(type) {
+        selectedCategory.value = type
+        console.log(`🎯 Выбрана категория: ${type}`)
+    }
 
     let map = null
     let clusterer = null
@@ -109,5 +158,41 @@
     background: #F1F5F9;
     border-radius: 12px;
     border: 1px solid #E2E8F0;
+    }
+
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #F8FAFC;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+    }
+
+    .filter-btn {
+        padding: 10px 18px;
+        border: 2px solid;
+        border-radius: 25px;
+        background: white;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: #334155;
+    }
+
+    .filter-btn:hover {
+        background: #1E40AF;
+        color: white;
+        transform: translateY(-2px);
+    }
+
+    .filter-btn.active {
+        background: #1E40AF;
+        color: white;
+        font-weight: 600;
     }
 </style>
