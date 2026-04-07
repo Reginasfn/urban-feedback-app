@@ -18,12 +18,53 @@
         </button>
     </div>
 
+    <!-- Статус -->
+    <div v-if="loading" class="status">⏳ Загрузка...</div>
+    <div v-else-if="error" class="status error">❌ {{ error }}</div>
+    <div v-else-if="objectsCount" class="status success">
+        Найдено: {{ objectsCount }}
+    </div>
+
     <div ref="mapContainer" class="map-container"></div>
   </div>
 </template>
 
 <script setup>
     import { ref, onMounted } from 'vue'
+    import axios from 'axios'
+
+    // Состояние для загрузки
+    const loading = ref(false)
+    const error = ref(null)
+    const objectsCount = ref(0)
+
+    // Загрузка объектов
+    const loadObjects = async (type) => {
+        if (!clusterer) return
+
+        loading.value = true
+        error.value = null
+        clusterer.removeAll()
+
+        try {
+            const response = await axios.get('http://localhost:8000/api/objects', {
+                params: { type }
+            })
+
+            const objects = response.data
+            console.log(`📦 Загружено объектов: ${objects.length}`)
+
+            objectsCount.value = objects.length
+
+        } 
+        catch (err) {
+            console.error('❌ Ошибка API:', err)
+            error.value = 'Не удалось загрузить объекты'
+        } 
+        finally {
+            loading.value = false
+        }
+    }
 
     const mapContainer = ref(null) 
 
@@ -58,9 +99,10 @@
         return categoryColors[type] || '#64748B'
     }
 
-    function selectCategory(type) {
+    // Обновляем selectCategory
+        function selectCategory(type) {
         selectedCategory.value = type
-        console.log(`🎯 Выбрана категория: ${type}`)
+        loadObjects(type) 
     }
 
     let map = null
@@ -194,5 +236,21 @@
         background: #1E40AF;
         color: white;
         font-weight: 600;
+    }
+
+    .status {
+        text-align: center;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    .status.error {
+        background: #FEF2F2;
+        color: #DC2626;
+    }
+    .status.success {
+        background: #F0FDF4;
+        color: #059669;
     }
 </style>
