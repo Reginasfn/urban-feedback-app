@@ -41,15 +41,16 @@
     box-sizing: border-box;
   }
 
-  #app {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: #1a1a1a;
-
-    
-  }
+ #app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1a1a1a;
+  
+  /* 👇 ФОН ПЕРЕНОСИМ СЮДА. Он будет на весь экран, включая область под футером */
+  background: url('@/assets/backgr1.jpg') center/cover no-repeat fixed;
+}
   
   /* Плавная прокрутка */
   html {
@@ -67,14 +68,8 @@
     font-family: inherit;
   }
 
-  .main-content {
-    padding: 160px 20px 20px 20px;
-    background-image: url('@/assets/backgr1.jpg');
-    background-size: cover;           /* Растягивает на весь экран */
-    background-repeat: no-repeat;     /* Убирает повторение */
-    background-position: center;      /* Центрирует изображение */
-    min-height: 100vh;                /* Минимальная высота = высота экрана */
-    background-attachment: fixed;     /* Фиксирует фон при прокрутке (опционально) */
-    flex: 1;
-  }
+.main-content {
+  padding: 160px 20px 20px;
+  flex: 1;
+}
 </style>

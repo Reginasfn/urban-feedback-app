@@ -145,7 +145,7 @@
         
         width: 85%; 
         height: 2px;
-        background-color: #1e3a5f;
+        background-color: #0b4a00;
     }
 
     .bottom-text p {
