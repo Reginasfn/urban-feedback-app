@@ -1,11 +1,14 @@
 <script>
 import LoginModal from '@/components/modals/LoginModal.vue'
+import RegisterModal from '@/components/modals/RegisterModal.vue'
+
 import Toast from 'primevue/toast'
 
 export default {
     name: 'AppHeader',
     components: {
         LoginModal,
+        RegisterModal,
         Toast
     },
     data() {
@@ -15,7 +18,8 @@ export default {
                 { label: 'О ПРОЕКТЕ', path: '/about' }
             ],
             isAuth: false,
-            showLoginModal: false
+            showLoginModal: false,
+            showRegisterModal: false
         }
     },
     computed: {
@@ -86,6 +90,37 @@ export default {
         handleRegisterClick() {
             this.showLoginModal = false
             this.$router.push('/register')
+        },
+
+        handleSwitchToRegister() {
+            this.showLoginModal = false
+
+            setTimeout(() => {
+                this.showRegisterModal = true
+            }, 180)
+        },
+
+        handleSwitchToLogin() {
+            this.showRegisterModal = false
+
+            setTimeout(() => {
+                this.showLoginModal = true
+            }, 180)
+        },
+
+        handleRegister(credentials) {
+            console.log('REGISTER:', credentials)
+
+            this.showRegisterModal = false
+
+            this.$toast.add({
+                severity: 'success',
+                summary: 'Успешно',
+                detail: 'Аккаунт создан',
+                life: 3000
+            })
+
+            this.showLoginModal = true
         }
     }
 }
@@ -153,10 +188,30 @@ export default {
     @login="handleLogin"
     @close="handleCloseModal"
     @register="handleRegisterClick"
+    @switch-to-register="handleSwitchToRegister"
   />
+
+    <RegisterModal
+        :visible="showRegisterModal"
+        @update:visible="showRegisterModal = $event"
+        @register="handleRegister"
+        @switch-to-login="handleSwitchToLogin"
+    />
 </template>
 
 <style>
+.p-dialog .p-dialog-content {
+    transition: opacity 0.5s ease;
+}
+.auth-dialog .p-dialog {
+    transition: all 0.5s ease-in-out;
+}
+
+/* фон затемнения */
+.p-dialog-mask {
+    backdrop-filter: blur(10px);
+    transition: opacity 0.5s ease;
+}
 /* Стили для портала Toast */
 .p-toast .my-big-toast {
     background: #ffffffc8 !important;
