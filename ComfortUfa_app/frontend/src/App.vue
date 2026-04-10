@@ -31,14 +31,14 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    scrollbar-width: none;
+    scrollbar-width: none; 
     -ms-overflow-style: none;
   }
 
-  ::-webkit-scrollbar {
+  /* ::-webkit-scrollbar {
     width: 0;
     background: transparent;
-  }
+  } */
 
   #app {
     min-height: 100vh;
