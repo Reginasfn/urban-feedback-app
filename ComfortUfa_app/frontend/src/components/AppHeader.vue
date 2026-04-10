@@ -23,6 +23,8 @@
                     { label: 'О ПРОЕКТЕ', path: '/about' }
                 ],
 
+                // isMapPage: false,
+
                 isAuth: false,
 
                 showLoginModal: false,
@@ -31,6 +33,32 @@
                 password: ''
             }
         },
+
+        computed:{
+            //динамический класс
+            headerClass(){
+                const isMapPage = this.$route.path === '/map'
+                console.log('🔍 Текущий путь:', this.$route.path, '| Карта?', isMapPage)
+
+                return {
+                    'header': true,
+                    'header--fixed': !isMapPage, //на всех страницах кроме карты
+                    'header--sticky': isMapPage
+                }
+            }
+        },
+
+        // watch:{
+        //     //следим за изменением маршрута
+        //     '$route'(to){
+        //         this.isMapPage = to.path === '/map'
+        //     }
+        // },
+
+        // created(){
+        //     //проверка при первой загрузке
+        //     this.isMapPage = this.$route.path === '/map'
+        // },
 
         methods:{
             handleProfileClick(){
@@ -84,7 +112,7 @@
 </script>
 
 <template>
-  <header class="header">
+  <header :class="headerClass">
     <!-- ВЕРХНЯЯ ЧАСТЬ ШАПКИ -->
     <div class="header-top">
       <div class="container">
@@ -158,10 +186,10 @@
             <Password v-model="password" toggleMask placeholder="Введите пароль" />
 
             <Button 
-            label="Войти" 
-            class="p-button-success" 
-            style="margin-top: 20px; width: 100%;" 
-            @click="login"
+                label="Войти" 
+                class="p-button-success" 
+                style="margin-top: 20px; width: 100%;" 
+                @click="login"
             />
 
             <div class="register-link">
@@ -177,13 +205,22 @@
 <style scoped>
     /* ===================== ОБЩИЕ СТИЛИ ===================== */
     .header {
-        background: rgba(170, 182, 177, 0.2); /* Полупрозрачный фон */
-        backdrop-filter: blur(20px);           /* Размытие того, что позади */
+        background: rgba(170, 182, 177, 0.2); 
+        backdrop-filter: blur(20px);
+        z-index: 1000;
+        border-bottom: 1px solid rgba(30, 58, 95, 0.1);
+    }
+
+    .header--fixed{
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
-        z-index: 1000;
+    }
+
+    .header--sticky {
+        position: static;
+        top: 0;
     }
 
     .container {
@@ -238,11 +275,10 @@
 
     /* ===================== НИЖНЯЯ ПОЛОСКА ===================== */
     .header-bottom {
-        position: relative; /* Обязательно для позиционирования линии */
+        position: relative;
         padding: 9px 0px;
         margin-top: 10px;
         margin-bottom: 2px;
-        /* border-top убираем, линию рисуем отдельно */
     }
 
     .header-bottom::before {
@@ -304,10 +340,10 @@
     .nav-link.active::after {
         content: '';
         position: absolute;
-        bottom: 4px; /* Чуть выше низа, чтобы "парить" */
+        bottom: 4px;
         left: 50%;
-        transform: translateX(-50%) scaleX(0); /* Скрыто в центре */
-        width: 60%; /* Линия чуть короче текста (стильно) */
+        transform: translateX(-50%) scaleX(0);
+        width: 60%;
         height: 2px;
         background: #168f04;
         border-radius: 2px;
@@ -316,7 +352,7 @@
 
     /* Активируем анимацию */
     .nav-link.active::after {
-        transform: translateX(-50%) scaleX(1); /* Раскрывается */
+        transform: translateX(-50%) scaleX(1);
     }
 
     /* ===================== ИКОНКИ ===================== */
@@ -349,25 +385,25 @@
     }
 
     .login-form {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
     }
 
     .register-link {
-    margin-top: 15px;
-    text-align: center;
-    font-size: 14px;
+        margin-top: 15px;
+        text-align: center;
+        font-size: 14px;
     }
 
     .register-link a {
-    color: #168f04;
-    cursor: pointer;
-    margin-left: 5px;
-    font-weight: 600;
+        color: #168f04;
+        cursor: pointer;
+        margin-left: 5px;
+        font-weight: 600;
     }
 
     .register-link a:hover {
-    text-decoration: underline;
+        text-decoration: underline;
     }
 </style>
