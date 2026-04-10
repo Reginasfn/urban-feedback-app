@@ -13,19 +13,11 @@
 </script>
 
 <template>
-  <!-- <nav class="navbar">
-    <router-link to="/" class="logo">ComfortUfa</router-link>
-    <div class="links">
-      <router-link to="/">Главная</router-link>
-      <router-link to="/map">Карта</router-link>
-      <router-link to="/profile">Профиль</router-link>
-    </div>
-  </nav> -->
   <div id="app">
     <AppHeader />
     
     <!-- Основной контент (меняется через router-view) -->
-    <main class="main-content">
+    <main class="main-content" :class="{ 'map-page': $route.path === '/map'}">
       <router-view />
     </main>
     
@@ -48,16 +40,16 @@
     background: transparent;
   }
 
- #app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #1a1a1a;
-  
-  /* 👇 ФОН ПЕРЕНОСИМ СЮДА. Он будет на весь экран, включая область под футером */
-  background: url('@/assets/backgr1.jpg') center/cover no-repeat fixed;
-}
+  #app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #1a1a1a;
+    
+    /* 👇 ФОН ПЕРЕНОСИМ СЮДА. Он будет на весь экран, включая область под футером */
+    background: url('@/assets/backgr1.jpg') center/cover no-repeat fixed;
+  }
   
   /* Плавная прокрутка */
   html {
@@ -76,7 +68,19 @@
   }
 
   .main-content {
-    padding: 140px 20px 20px;
+    /* padding: 140px 20px 20px; */
     flex: 1;
+    padding: 20px;
   }
+
+  .main-content:not(.map-page){
+    padding-top: 140px;
+  }
+
+  .main-content.map-page{
+    padding-top: 30px;
+    padding-bottom: 300px;
+
+  }
+
 </style>
