@@ -69,7 +69,7 @@
   }
 
 .main-content {
-  padding: 160px 20px 20px;
+  padding: 140px 20px 20px;
   flex: 1;
 }
 </style>

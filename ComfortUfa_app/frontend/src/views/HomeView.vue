@@ -1,184 +1,129 @@
-<script>
-    export default {
-        name: 'HomeView',
-        data() {
-            return {
-            // Здесь можно добавить реактивные данные для статистики
-            stats: {
-                marks: 1234,
-                solved: 856,
-                users: 3421
-            }
-            }
-        }
-    }
-</script>
-
 <template>
   <div class="home">
     <!-- ===================== ГЕРОЙ-СЕКЦИЯ ===================== -->
     <section class="hero">
-      <div class="hero-content">
-        <h1 class="hero-title">
-          Вместе делаем Уфу<br>
-          <span class="highlight">комфортнее!</span>
-        </h1>
-        <p class="hero-subtitle">
-          Платформа для оценки благоустройства города.<br>
-          Сообщайте о проблемах и предлагайте улучшения
-        </p>
+
+      <div class="hero-container">
         
-        <!-- Основные кнопки действий -->
-        <div class="hero-actions">
-          <router-link to="/map" class="btn btn-large btn-primary">
-            📍 Открыть карту
-          </router-link>
-          <button class="btn btn-large btn-outline">
-            ℹ️ Как это работает?
-          </button>
+        <!-- ЛЕВАЯ ЧАСТЬ: Текст -->
+        <div class="hero-content">
+          <h1 class="hero-title">
+            Вместе делаем Уфу<br>
+            <span class="highlight">комфортнее!</span>
+          </h1>
+          <h2 class="hero-subtitle">
+            Система предназначена для оценки <br> благоустройства города.<br>
+            Сообщайте о проблемах и улучшайте свою жизнь!
+          </h2>
+          
+          <div class="hero-actions">
+            <router-link to="/map" class="btn btn-large btn-primary">
+              Сообщить о проблеме
+            </router-link>
+          </div>
+
         </div>
+
+        <!-- ПРАВАЯ ЧАСТЬ: Изображение Салавата -->
+        <div class="hero-image">
+          <img src="/images/salavat.png" alt="Салават Юлаев" class="salavat-img">
+        </div>
+
       </div>
 
-      <!-- Статистика портала -->
+      <!-- Статистика портала (снизу на всю ширину) -->
       <div class="hero-stats">
         <div class="stat-card">
-          <div class="stat-number">1,234</div>
-          <div class="stat-label">Отметок на карте</div>
+          <div class="stat-number">{{ stats.marks.toLocaleString() }}</div>
+          <div class="stat-label">Количество объектов</div>
         </div>
         <div class="stat-card">
-          <div class="stat-number">856</div>
-          <div class="stat-label">Решено проблем</div>
+          <div class="stat-number">{{ stats.solved.toLocaleString() }}</div>
+          <div class="stat-label">Имеющихся <br> проблем в городе</div>
         </div>
         <div class="stat-card">
-          <div class="stat-number">3,421</div>
-          <div class="stat-label">Пользователей</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================== ВОЗМОЖНОСТИ ПОРТАЛА ===================== -->
-    <section class="features">
-      <h2 class="section-title">Возможности платформы</h2>
-      
-      <div class="features-grid">
-        <!-- Карточка 1 -->
-        <div class="feature-card">
-          <div class="feature-icon">📍</div>
-          <h3 class="feature-title">Отмечайте на карте</h3>
-          <p class="feature-text">
-            Найдите объект на интерактивной карте Яндекса и оставьте отметку о проблеме
-          </p>
-        </div>
-
-        <!-- Карточка 2 -->
-        <div class="feature-card">
-          <div class="feature-icon">📝</div>
-          <h3 class="feature-title">Оставляйте отзывы</h3>
-          <p class="feature-text">
-            Опишите проблему подробно, добавьте фотографии и оценку состояния
-          </p>
-        </div>
-
-        <!-- Карточка 3 -->
-        <div class="feature-card">
-          <div class="feature-icon">📊</div>
-          <h3 class="feature-title">Следите за решением</h3>
-          <p class="feature-text">
-            Отслеживайте статус рассмотрения вашей заявки в реальном времени
-          </p>
-        </div>
-
-        <!-- Карточка 4 -->
-        <div class="feature-card">
-          <div class="feature-icon">🏆</div>
-          <h3 class="feature-title">Участвуйте в рейтинге</h3>
-          <p class="feature-text">
-            Зарабатывайте баллы за активность и поднимайтесь в топе пользователей
-          </p>
+          <div class="stat-number">{{ stats.users.toLocaleString() }}</div>
+          <div class="stat-label">Зарегистрировано <br> пользователей</div>
         </div>
       </div>
     </section>
 
     <!-- ===================== АКТИВНЫЕ ТЕМЫ ===================== -->
     <section class="active-topics">
-      <h2 class="section-title">Актуальные проблемы</h2>
-      
-      <div class="topics-grid">
-        <div class="topic-card">
-          <div class="topic-icon">🌳</div>
-          <div class="topic-content">
-            <h4>Парки и скверы</h4>
-            <p>Некачественное содержание территорий</p>
-            <span class="topic-count">124 проблемы</span>
+      <div class="topics-container">
+        <h2 class="section-title">Актуальные проблемы</h2>
+        <p class="section-subtitle">Какие категории волнуют жителей Уфы прямо сейчас?</p>
+        
+        <div class="topics-grid">
+          
+          <!-- К1 - Парки и скверы -->
+          <div class="topic-card">
+            <div class="topic-icon-wrapper">
+              <svg class="topic-svg-icon" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" xml:space="preserve">
+                <g>
+                  <path class="st0" d="M422.969,193.281c2.313-7.922,3.594-16.313,3.594-24.969c0-42.469-29.375-78.063-68.875-87.844 C346.813,34.406,305.438,0,256,0s-90.813,34.406-101.75,80.469c-39.438,9.781-68.813,45.375-68.813,87.844 c0,8.656,1.281,17.047,3.594,24.969C64.313,212.469,48.406,242.313,48.406,276c0,57.75,46.781,104.563,104.563,104.563 c14.625,0,28.563-2.969,41.188-8.406c1.922,1.594,3.844,3.125,5.844,4.563V512h112V376.641c2-1.438,3.922-2.891,5.75-4.484 c12.719,5.438,26.656,8.406,41.281,8.406c57.781,0,104.563-46.813,104.563-104.563 C463.594,242.313,447.688,212.469,422.969,193.281z M280,480h-48v-88.156c7.688,2,15.688,3.031,24,3.031s16.313-1.031,24-3.031V480 z M359.031,348.563c-9.906,0-19.5-1.922-28.625-5.844l-18.156-7.844l-0.25,0.25l-14.875,12.625 c-5.203,4.328-10.969,7.844-17.125,10.328c-7.594,3.125-15.688,4.797-24,4.797s-16.406-1.672-24-4.797 c-6.156-2.484-11.922-6-17.125-10.328L200,335.125l-0.25-0.25l-18.156,7.844c-9.125,3.922-18.719,5.844-28.625,5.844 c-40,0-72.563-32.563-72.563-72.563c0-22.563,10.234-43.438,28.234-57.359l17.109-13.281l-6-20.891 c-1.5-5.438-2.313-10.875-2.313-16.156c0-26.953,18.313-50.313,44.484-56.719l18.953-4.719l4.563-19.031 C193.188,54.969,222.25,32,256,32s62.813,22.969,70.563,55.844l4.469,19.031l19.047,4.719 c26.172,6.406,44.484,29.766,44.484,56.719c0,5.281-0.813,10.719-2.313,16.156l-6,20.891l17.109,13.281 c18,13.922,28.234,34.797,28.234,57.359C431.594,316,399.031,348.563,359.031,348.563z"></path>
+                </g>
+              </svg>
+            </div>
+            <div class="topic-content">
+              <h4>Парки и скверы</h4>
+              <p>Некачественное содержание территорий, мусор, старые дорожки</p>
+            </div>
           </div>
-        </div>
 
-        <div class="topic-card">
-          <div class="topic-icon">🛣</div>
-          <div class="topic-content">
-            <h4>Дороги и тротуары</h4>
-            <p>Ямы, выбоины, повреждения покрытия</p>
-            <span class="topic-count">89 проблем</span>
+          <!-- К2 - Дороги и тротуары -->
+          <div class="topic-card">
+            <div class="topic-icon-wrapper">
+              <i class="pi pi-directions"></i>
+            </div>
+            <div class="topic-content">
+              <h4>Дороги и тротуары</h4>
+              <p>Ямы, выбоины, повреждение асфальтового покрытия</p>
+            </div>
           </div>
-        </div>
 
-        <div class="topic-card">
-          <div class="topic-icon">🏡</div>
-          <div class="topic-content">
-            <h4>Дворовые территории</h4>
-            <p>Неубранные дворы, освещение</p>
-            <span class="topic-count">156 проблем</span>
+          <!-- К3 - Дворовые территории -->
+          <div class="topic-card">
+            <div class="topic-icon-wrapper">
+              <i class="pi pi-home"></i>
+            </div>
+            <div class="topic-content">
+              <h4>Дворовые территории</h4>
+              <p>Неубранные дворы, проблемы с освещением и шумом</p>
+            </div>
           </div>
-        </div>
 
-        <div class="topic-card">
-          <div class="topic-icon">💡</div>
-          <div class="topic-content">
-            <h4>Уличное освещение</h4>
-            <p>Неисправные фонари, темные участки</p>
-            <span class="topic-count">67 проблем</span>
+          <!-- К4 - Уличное освещение -->
+          <div class="topic-card">
+            <div class="topic-icon-wrapper">
+              <i class="pi pi-lightbulb"></i>
+            </div>
+            <div class="topic-content">
+              <h4>Уличное освещение</h4>
+              <p>Неисправные фонари, тёмные участки во дворах</p>
+            </div>
           </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- ===================== КАК ЭТО РАБОТАЕТ ===================== -->
-    <section class="how-it-works">
-      <h2 class="section-title">Как это работает?</h2>
-      
-      <div class="steps">
-        <div class="step">
-          <div class="step-number">1</div>
-          <h4>Найдите объект</h4>
-          <p>Откройте карту и найдите проблемный объект в Уфе</p>
         </div>
-
-        <div class="step">
-          <div class="step-number">2</div>
-          <h4>Оставьте отметку</h4>
-          <p>Добавьте фото, описание и категорию проблемы</p>
-        </div>
-
-        <div class="step">
-          <div class="step-number">3</div>
-          <h4>Ожидайте решения</h4>
-          <p>Администрация рассмотрит и примет меры</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================== ПРИЗЫВ К ДЕЙСТВИЮ ===================== -->
-    <section class="cta">
-      <div class="cta-content">
-        <h2>Готовы сделать Уфу лучше?</h2>
-        <p>Присоединяйтесь к тысячам активных жителей города</p>
-        <router-link to="/map" class="btn btn-large btn-white">
-          Начать прямо сейчас
-        </router-link>
       </div>
     </section>
   </div>
 </template>
+
+<script>
+export default {
+  name: 'HomeView',
+  data() {
+    return {
+      stats: {
+        marks: 1234,
+        solved: 856,
+        users: 3421
+      }
+    }
+  }
+}
+</script>
 
 <style scoped>
 /* ===================== ОБЩИЕ СТИЛИ ===================== */
@@ -190,124 +135,149 @@
 
 /* ===================== КНОПКИ ===================== */
 .btn {
-  padding: 10px 20px;
-  border: none;
+  border: 2px solid transparent;
   border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
   text-decoration: none;
-  display: inline-block;
-}
-
-.btn-primary {
-  background: #2563eb;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #1d4ed8;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-}
-
-.btn-outline {
-  background: transparent;
-  color: #2563eb;
-  border: 2px solid #2563eb;
-}
-
-.btn-outline:hover {
-  background: #2563eb;
-  color: white;
-}
-
-.btn-large {
-  padding: 15px 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
   font-size: 16px;
 }
 
-.btn-white {
-  background: white;
-  color: #2563eb;
+.btn-primary {
+  background: transparent;
+  border-color: #168f04;
+  color: #168f04;
 }
 
-.btn-white:hover {
-  background: #f3f4f6;
-  transform: translateY(-2px);
+.btn-primary:hover {
+  background: #168f04;
+  color: white;
+  box-shadow: 0 8px 20px rgba(22, 143, 4, 0.4);
+}
+
+.btn-primary:active {
+  box-shadow: 0 4px 10px rgba(22, 143, 4, 0.3);
+}
+
+.btn-large {
+  padding: 20px 30px;
+  font-size: 18px;
 }
 
 /* ===================== ГЕРОЙ-СЕКЦИЯ ===================== */
 .hero {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 80px 20px;
-  text-align: center;
+  position: relative;
 }
 
+.hero-container {
+  max-width: 1200px;
+  margin: -140px auto 0;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 60px;
+  min-height: 500px;
+  position: relative;
+  overflow: visible;
+}
+
+/* ЛЕВАЯ ЧАСТЬ: Текст */
 .hero-content {
-  max-width: 800px;
-  margin: 0 auto 60px;
+  flex: 1;
+  max-width: 600px;
+  color: rgb(0, 83, 40);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 0 20px;
 }
 
 .hero-title {
-  font-size: 48px;
-  font-weight: 800;
-  margin-bottom: 20px;
-  line-height: 1.2;
+  font-size: 52px;
+  font-weight: 900;
+  margin: 60px 0px 0px 0px;
+  line-height: 1.1;
+  color: rgb(28, 25, 88);
+  text-transform: uppercase;
 }
 
 .highlight {
-  color: #fbbf24;
+  color: #007306;
+  display: block;
 }
 
 .hero-subtitle {
-  font-size: 20px;
-  margin-bottom: 40px;
+  font-size: 22px;
+  margin-bottom: 0px;
   opacity: 0.95;
+  line-height: 1.6;
 }
 
 .hero-actions {
   display: flex;
-  gap: 20px;
-  justify-content: center;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 20px;
+  z-index: 10;
 }
 
-/* Статистика */
+/* ПРАВАЯ ЧАСТЬ: Изображение */
+.hero-image {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.salavat-img {
+  max-height: 700px;
+  width: auto;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3));
+  transform: translateY(50px);
+}
+
+/* Статистика (снизу) */
 .hero-stats {
-  max-width: 1000px;
-  margin: 0 auto;
+  max-width: 1200px;
+  margin: -60px auto 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 30px;
+  padding: 0 40px 60px;
+  position: relative;
+  z-index: 3;
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  padding: 30px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(70px);
+  padding: 20px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(2, 142, 0, 0.2);
+  text-align: center;
+  color: rgba(4, 67, 0, 0.941);
 }
 
 .stat-number {
   font-size: 42px;
   font-weight: 800;
-  margin-bottom: 10px;
 }
 
-.stat-label {
-  font-size: 16px;
-  opacity: 0.9;
+
+/* ===================== АКТУАЛЬНЫЕ ПРОБЛЕМЫ ===================== */
+.active-topics {
+  padding: 30px 20px 100px 20px;
+  background: transparent;
 }
 
-/* ===================== СЕКЦИИ ===================== */
-.features,
-.active-topics,
-.how-it-works {
-  padding: 80px 20px;
+.topics-container {
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -315,196 +285,96 @@
 .section-title {
   text-align: center;
   font-size: 36px;
-  font-weight: 700;
-  margin-bottom: 50px;
-  color: #1a1a1a;
+  font-weight: 800;
+  color: rgb(0, 83, 40);
+  margin-bottom: 10px;
 }
 
-/* ===================== КАРТОЧКИ ВОЗМОЖНОСТЕЙ ===================== */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 30px;
-}
-
-.feature-card {
-  background: white;
-  padding: 40px 30px;
-  border-radius: 16px;
+.section-subtitle {
   text-align: center;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s, box-shadow 0.3s;
-}
-
-.feature-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-}
-
-.feature-icon {
-  font-size: 48px;
-  margin-bottom: 20px;
-}
-
-.feature-title {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 15px;
-  color: #1a1a1a;
-}
-
-.feature-text {
-  color: #6b7280;
-  line-height: 1.6;
-}
-
-/* ===================== АКТИВНЫЕ ТЕМЫ ===================== */
-.active-topics {
-  background: #f9fafb;
+  color: #00540e;
+  font-size: 18px;
+  margin-bottom: 50px;
 }
 
 .topics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 25px;
 }
 
+/* Карточка */
 .topic-card {
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s;
-}
-
-.topic-card:hover {
-  transform: translateX(5px);
-}
-
-.topic-icon {
-  font-size: 40px;
-}
-
-.topic-content h4 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 5px;
-  color: #1a1a1a;
-}
-
-.topic-content p {
-  color: #6b7280;
-  font-size: 14px;
-  margin-bottom: 10px;
-}
-
-.topic-count {
-  display: inline-block;
-  background: #fee2e2;
-  color: #dc2626;
-  padding: 4px 12px;
+  background: rgba(30, 95, 63, 0.358);
   border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* ===================== КАК ЭТО РАБОТАЕТ ===================== */
-.steps {
+  padding: 30px;
   display: flex;
-  justify-content: space-between;
-  gap: 40px;
-  flex-wrap: wrap;
-}
-
-.step {
-  flex: 1;
-  min-width: 250px;
-  text-align: center;
+  flex-direction: column;
+  align-items: flex-start;
   position: relative;
+  border: 1px solid #e2e8f0;
+  transition: all 0.9s cubic-bezier(0.25, 0.8, 0.25, 1);
+  cursor: pointer;
+  color: white;
 }
 
-.step-number {
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+/* Эффект при наведении */
+.topic-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+  border-color: #cbd5e1;
+}
+
+/* Иконка в кружочке */
+.topic-icon-wrapper {
+  width: 55px;
+  height: 55px;
+  background: #174a1c4a;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  font-weight: 700;
-  margin: 0 auto 20px;
+  margin-bottom: 20px;
+  transition: background 0.3s;
 }
 
-.step h4 {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 10px;
-  color: #1a1a1a;
+.topic-card:hover .topic-icon-wrapper {
+  background: #dcfce7;
 }
 
-.step p {
-  color: #6b7280;
-  line-height: 1.6;
+.topic-icon-wrapper i {
+  font-size: 28px;
+  color: #003a16;
 }
 
-/* ===================== ПРИЗЫВ К ДЕЙСТВИЮ ===================== */
-.cta {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 100px 20px;
+.topic-content {
   text-align: center;
-  color: white;
+  width: 100%;
 }
 
-.cta-content h2 {
-  font-size: 42px;
-  font-weight: 800;
-  margin-bottom: 15px;
+/* Текст */
+.topic-content h4 {
+  font-size: 18px;
+  font-weight: 900;
+  color: #1b462b;
+  margin-bottom: 10px;
 }
 
-.cta-content p {
-  font-size: 20px;
-  margin-bottom: 30px;
-  opacity: 0.95;
+.topic-content p {
+  color: #003a16;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 25px;
+  flex-grow: 1;
+  font-weight: 600;
 }
 
-
-/* ===================== АДАПТИВНОСТЬ ===================== */
-@media (max-width: 768px) {
-  .header-container {
-    flex-direction: column;
-    gap: 15px;
-  }
-
-  .nav {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 15px;
-  }
-
-  .hero-title {
-    font-size: 32px;
-  }
-
-  .hero-subtitle {
-    font-size: 16px;
-  }
-
-  .section-title {
-    font-size: 28px;
-  }
-
-  .features-grid,
-  .topics-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .steps {
-    flex-direction: column;
-  }
+/* Стили для SVG иконки */
+.topic-svg-icon {
+  width: 32px;
+  height: 32px;
+  fill: #003a16;
+  transition: fill 0.3s;
 }
+
 </style>
