@@ -1,3 +1,88 @@
+<script>
+    import Dialog from 'primevue/dialog'
+    import InputText from 'primevue/inputtext'
+    import Password from 'primevue/password'
+    import Button from 'primevue/button'
+    import Toast from 'primevue/toast'
+
+    export default {
+        name: 'AppHeader',
+
+        components:{
+            Dialog,
+            InputText,
+            Password,
+            Button,
+            Toast
+        },
+
+        data() {
+            return {
+                navItems: [
+                    { label: 'КАРТА', path: '/map' },
+                    { label: 'О ПРОЕКТЕ', path: '/about' }
+                ],
+
+                isAuth: false,
+
+                showLoginModal: false,
+
+                email: '',
+                password: ''
+            }
+        },
+
+        methods:{
+            handleProfileClick(){
+                if (!this.isAuth){
+                    this.showLoginModal = true
+                }
+                else{
+                    this.$router.push('/profile')
+                }
+            },
+
+            handleFavoritesClick() {
+                if (!this.isAuth) {
+                    this.$toast.add({
+                    severity: 'warn',
+                    summary: 'Требуется авторизация',
+                    detail: 'Чтобы перейти в избранное, войдите в систему',
+                    life: 3000
+                    })
+                } 
+                else {
+                    this.$router.push('/favorites')
+                }
+            },
+
+            login(){
+                if (!this.email || !this.password){
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Ошибка',
+                        detail: 'Заполните email и пароль',
+                        life: 3000
+                    })
+                    return
+                }
+                this.isAuth = true;
+
+                this.$toast.add({
+                    severity: 'success',
+                    summary: 'Успешно',
+                    detail: 'Вы вошли в систему',
+                    life: 3000
+                })
+
+                this.showLoginModal = false
+                this.$router.push('/profile')
+            }
+
+        }
+    }
+</script>
+
 <template>
   <header class="header">
     <!-- ВЕРХНЯЯ ЧАСТЬ ШАПКИ -->
@@ -29,10 +114,10 @@
 
         <!-- Иконки справа -->
         <div class="header-icons">
-          <button class="icon-btn" title="Избранное">
+          <button class="icon-btn" title="Избранное" @click="handleFavoritesClick">
             <i class="pi pi-bookmark"></i>
           </button>
-          <button class="icon-btn" title="Профиль" @click="$router.push('/login')">
+          <button class="icon-btn" title="Профиль" @click="handleProfileClick">
             <i class="pi pi-user"></i>
           </button>
         </div>
@@ -49,21 +134,45 @@
       </div>
     </div>
   </header>
-</template>
 
-<script>
-    export default {
-    name: 'AppHeader',
-    data() {
-        return {
-        navItems: [
-            { label: 'КАРТА', path: '/map' },
-            { label: 'О ПРОЕКТЕ', path: '/about' }
-        ]
-        }
-    }
-    }
-</script>
+
+
+
+
+    <!-- Уведомление -->
+    <Toast />
+
+    <!-- Модальное окно авторизации -->
+    <Dialog 
+        v-model:visible="showLoginModal" 
+        modal 
+        header="Авторизация"
+        :style="{ width: '400px' }"
+    >
+        <div class="login-form">
+            
+            <label>Email</label>
+            <InputText v-model="email" placeholder="Введите email" />
+
+            <label style="margin-top: 15px;">Пароль</label>
+            <Password v-model="password" toggleMask placeholder="Введите пароль" />
+
+            <Button 
+            label="Войти" 
+            class="p-button-success" 
+            style="margin-top: 20px; width: 100%;" 
+            @click="login"
+            />
+
+            <div class="register-link">
+            <span>Нет аккаунта?</span>
+            <a @click="$router.push('/register')">Зарегистрироваться</a>
+            </div>
+
+        </div>
+    </Dialog>
+
+</template>
 
 <style scoped>
     /* ===================== ОБЩИЕ СТИЛИ ===================== */
@@ -239,4 +348,26 @@
         font-size: 19px;
     }
 
+    .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    }
+
+    .register-link {
+    margin-top: 15px;
+    text-align: center;
+    font-size: 14px;
+    }
+
+    .register-link a {
+    color: #168f04;
+    cursor: pointer;
+    margin-left: 5px;
+    font-weight: 600;
+    }
+
+    .register-link a:hover {
+    text-decoration: underline;
+    }
 </style>

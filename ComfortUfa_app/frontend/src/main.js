@@ -4,6 +4,7 @@ import router from './router'
 
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura' // Тема
+import ToastService from 'primevue/toastservice'
 
 // Импорт компонентов (можно импортировать всё или по отдельности)
 import Avatar from 'primevue/avatar'
@@ -21,6 +22,7 @@ app.use(PrimeVue, {
     }
 })
 
+app.use(ToastService)
 app.use(router)
 
 app.component('Avatar', Avatar)

@@ -39,6 +39,13 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
   }
 
  #app {
@@ -68,8 +75,8 @@
     font-family: inherit;
   }
 
-.main-content {
-  padding: 140px 20px 20px;
-  flex: 1;
-}
+  .main-content {
+    padding: 140px 20px 20px;
+    flex: 1;
+  }
 </style>
