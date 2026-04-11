@@ -1,23 +1,50 @@
 <template>
   <div class="map-page">
     
-    <!-- ===== ПЛАВАЮЩАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ===== -->
     <div class="map-overlay">
       <header class="map-header">
-        <h3>Карта благоустройства города Уфа</h3>
-        <!-- <p class="subtitle">Выберите категорию, чтобы увидеть объекты</p> -->
+        <h3>🗺️ Карта благоустройства города Уфа</h3>
       </header>
+
+      <!-- Контролы управления -->
+      <div class="controls-panel">
+        <div class="controls-group">
+          <button class="control-btn zoom-in" @click="zoomIn" title="Приблизить (Ctrl + +)">
+            🔍+
+          </button>
+          <button class="control-btn zoom-out" @click="zoomOut" title="Отдалить (Ctrl + -)">
+            🔍−
+          </button>
+          <button class="control-btn location-btn" @click="goToMyLocation" title="Мое местоположение">
+            📍
+          </button>
+          <button class="control-btn reset-btn" @click="resetView" title="Вернуться в Уфу">
+            🏠
+          </button>
+        </div>
+
+        <div class="zoom-info">
+          Зум: {{ currentZoom }}
+        </div>
+      </div>
 
       <!-- Кнопки-фильтры -->
       <div class="button-group">
+        <div class="category-title">Категории:</div>
         <button 
           v-for="cat in categories" 
           :key="cat" 
           @click="loadObjects(cat)"
           :class="{ active: selectedCategory === cat }"
+          class="category-btn"
         >
           {{ cat }}
         </button>
+      </div>
+
+      <!-- Информация об объектах -->
+      <div v-if="objectsCount > 0" class="info-panel">
+        <span>Объектов: {{ objectsCount }}</span>
       </div>
     </div>
 
@@ -30,10 +57,15 @@
     <!-- Сообщение об ошибке -->
     <div v-if="error" class="error-overlay">
       <span>⚠️ {{ error }}</span>
-      <button @click="error = null">Закрыть</button>
+      <button @click="error = null" class="close-btn">✕</button>
     </div>
 
-    <!-- ===== САМА КАРТА (на весь экран) ===== -->
+    <!-- Сообщение о успехе -->
+    <div v-if="success" class="success-overlay">
+      <span>✅ {{ success }}</span>
+    </div>
+
+    <!-- КАРТА -->
     <div ref="mapContainer" class="map-container"></div>
 
   </div>
@@ -47,12 +79,18 @@ import axios from 'axios'
 const mapContainer = ref(null)
 const loading = ref(false)
 const error = ref(null)
+const success = ref(null)
 const selectedCategory = ref(null)
+const currentZoom = ref(12)
+const objectsCount = ref(0)
 
 let map = null
-let clusterer = null
+let dataSource = null
 
-// ===== Категории =====
+// ===== Константы =====
+const UFA_CENTER = [55.9721, 54.7388]
+const DEFAULT_ZOOM = 12
+
 const categories = [
     'Камера видеонаблюдения',
     'Кафе',
@@ -64,313 +102,281 @@ const categories = [
     'Детская площадка'
 ]
 
-// ===== Цвета =====
 function getColorByType(type) {
     const colors = {
-        "Кафе": "red",
-        "Скамейка": "green",
-        "Фонарь": "yellow",
-        "Парк": "darkGreen",
-        "Беседка": "violet",
-        "Остановка": "blue",
-        "Детская площадка": "orange",
-        "Камера видеонаблюдения": "black"
+        "Кафе": "#FF0000",
+        "Скамейка": "#00AA00",
+        "Фонарь": "#FFFF00",
+        "Парк": "#006600",
+        "Беседка": "#AA00FF",
+        "Остановка": "#0000FF",
+        "Детская площадка": "#FF8800",
+        "Камера видеонаблюдения": "#000000"
     }
-    return colors[type] || "gray"
+    return colors[type] || "#808080"
 }
 
+// ===== Загрузка Yandex Maps =====
 const loadYmaps = (key) =>
   new Promise((resolve, reject) => {
     if (window.ymaps3) return resolve()
 
+    console.log('📡 Загружаем Yandex Maps v3...')
     const script = document.createElement('script')
     script.src = `https://api-maps.yandex.ru/v3/?apikey=${key}&lang=ru_RU`
+    script.async = true
 
-    script.onload = resolve
-    script.onerror = reject
+    script.onload = async () => {
+      try {
+        await window.ymaps3.ready
+        console.log('✅ Yandex Maps v3 загружены')
+        resolve()
+      } catch (e) {
+        reject(e)
+      }
+    }
 
+    script.onerror = () => {
+      reject(new Error('Ошибка загрузки Yandex Maps v3'))
+    }
+    
     document.head.appendChild(script)
   })
 
-// ===== Инициализация карты версии 3 =====
+// ===== Инициализация карты =====
 const initMap = async () => {
-    
+  console.log('🗺️ Инициализируем карту...')
+  
   await window.ymaps3.ready
 
-  const {
-    YMap,
+  const { 
+    YMap, 
     YMapDefaultSchemeLayer,
-    YMapMarker
+    YMapDefaultFeaturesLayer,
+    YMapFeatureDataSource,
+    YMapListener
   } = window.ymaps3
 
   map = new YMap(mapContainer.value, {
     location: {
-      center: [55.9721, 54.7388],
-      zoom: 12
+      center: UFA_CENTER,
+      zoom: DEFAULT_ZOOM
     }
   })
 
-  // стиль карты (твой JSON можно сюда вставить)
-  map.addChild(new YMapDefaultSchemeLayer({
-    theme: 'light'
-  }))
+  // ✅ FIX: правильные события
+  const listener = new YMapListener({
+    onUpdate: ({ location }) => {
+      if (location && location.zoom !== undefined) {
+        currentZoom.value = Math.round(location.zoom)
+      }
+    }
+  })
+
+  map.addChild(listener)
+
+  // Добавляем слой схемы
+  map.addChild(new YMapDefaultSchemeLayer({ theme: 'light' }))
+
+  // DataSource
+  dataSource = new YMapFeatureDataSource()
+  const featuresLayer = new YMapDefaultFeaturesLayer()
+  featuresLayer.addChild(dataSource)
+  map.addChild(featuresLayer)
+
+  console.log('✅ Карта инициализирована')
 }
 
-// ===== Инициализация карты версии 2 =====
-// const initMap = () => {
-//     return new Promise((resolve) => {
-//         if (window.ymaps) {
-//             window.ymaps.ready(() => createMap(resolve))
-//         } else {
-//             const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
-//             const script = document.createElement('script')
-//             script.src = `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU`
-//             script.onload = () => window.ymaps.ready(() => createMap(resolve))
-//             script.onerror = () => {
-//                 error.value = 'Не удалось загрузить Яндекс.Карты'
-//             }
-//             document.head.appendChild(script)
-//         }
-//     })
-// }
-// const createMap = (resolve) => {
-//     map = new window.ymaps.Map(mapContainer.value, {
-//         center: [54.7388, 55.9721], // Уфа
-//         zoom: 12,
-//         controls: []
-//     })
+// ===== Управление картой =====
+const zoomIn = () => {
+  if (map && map.location) {
+    map.setLocation({
+      center: map.location.center,
+      zoom: map.location.zoom + 1
+    })
+  }
+}
 
-//     const geoControl = new window.ymaps.control.GeolocationControl({
-//         options: {
-//             float: 'none',
-//             position: {
-//                 top: 100,
-//                 right: 20
-//             }
-//         }
-//     })
+const zoomOut = () => {
+  if (map && map.location) {
+    map.setLocation({
+      center: map.location.center,
+      zoom: Math.max(0, map.location.zoom - 1)
+    })
+  }
+}
 
-//     const zoomControl = new window.ymaps.control.ZoomControl({
-//         options: {
-//             float: 'none',
-//             position: {
-//                 top: 160,
-//                 right: 20
-//             }
-//         }
-//     })
+const resetView = () => {
+  if (map) {
+    map.setLocation({
+      center: UFA_CENTER,
+      zoom: DEFAULT_ZOOM
+    })
+    success.value = '🏠 Вернулись в Уфу'
+    setTimeout(() => { success.value = null }, 2000)
+  }
+}
 
-//     clusterer = new window.ymaps.Clusterer({
-//         preset: 'islands#invertedBlueClusterIcons',
-//         clusterDisableClickZoom: false,
-//         clusterOpenBalloonOnClick: true
-//     })
+const goToMyLocation = () => {
+  console.log('📍 Получаем геолокацию...')
+  loading.value = true
+  
+  if (!navigator.geolocation) {
+    error.value = 'Геолокация не поддерживается вашим браузером'
+    loading.value = false
+    return
+  }
 
-//     map.controls.add(geoControl)
-//     map.controls.add(zoomControl)
-//     map.geoObjects.add(clusterer)
-//     resolve()
-// }
-// ===== ЗАГРУЗКА ОБЪЕКТОВ =====
-// const loadObjects = async (type) => {
-//     if (!map || !clusterer) {
-//         error.value = 'Карта ещё не загрузилась'
-//         return
-//     }
-
-//     selectedCategory.value = type
-//     loading.value = true
-//     error.value = null
-//     clusterer.removeAll()
-
-//     try {
-//         const response = await axios.get('http://localhost:8000/api/objects', {
-//             params: { type, limit: 1000 }
-//         })
-
-//         const objects = response.data
-//         const placemarks = objects.map(obj => {
-//             const color = getColorByType(obj.type_name || type)
-//             return new window.ymaps.Placemark(
-//                 obj.coords,
-//                 {
-//                     balloonContent: `
-//                         <div style="font-size:14px; min-width:200px; font-family: sans-serif;">
-//                             <b style="font-size:16px; color:#1E293B;">${obj.name}</b><br>
-//                             <span style="color:#666; display:block; margin:4px 0;">📍 ${obj.address || 'Адрес не указан'}</span>
-//                             <span style="background:#e2e8f0; padding:2px 8px; border-radius:4px; font-size:12px;">${obj.type_name}</span>
-//                             <br><br>
-//                             <button onclick="window.__rateObject?.('${obj.id_object}')" 
-//                                     style="background:#007bff; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:500;">
-//                                 📝 Оценить объект
-//                             </button>
-//                         </div>
-//                     `
-//                 },
-//                 {
-//                     preset: `islands#icon`,
-//                     iconColor: color
-//                 }
-//             )
-//         })
-
-//         clusterer.add(placemarks)
-//         console.log(`✅ Загружено ${placemarks.length} объектов типа "${type}"`)
-
-//     } catch (err) {
-//         console.error('❌ Ошибка:', err)
-//         error.value = err.response?.data?.detail || 'Не удалось загрузить объекты'
-//     } finally {
-//         loading.value = false
-//     }
-// }
-
-// ===== Глобальная функция для кнопки "Оценить" =====
-// window.__rateObject = (id) => {
-//     alert(`Вы хотите оценить объект #${id}\n(Функция в разработке)`)
-// }
-
-// ===== Lifecycle =====
-// onMounted(async () => {
-//     await initMap()
-//     // Загружаем объекты по умолчанию (первая категория)
-//     if (categories.length > 0) {
-//         await loadObjects(categories[0])
-//     }
-// })
-
-// onBeforeUnmount(() => {
-//     if (map) {
-//         map.destroy()
-//         map = null
-//         clusterer = null
-//     }
-//     delete window.__rateObject
-// })
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords
+      const accuracy = position.coords.accuracy
+      
+      console.log(`✅ Геолокация найдена: ${latitude}, ${longitude} (±${accuracy}м)`)
+      
+      if (map) {
+        map.setLocation({
+          center: [longitude, latitude],
+          zoom: 15
+        })
+        
+        success.value = `📍 Вы здесь (точность: ±${Math.round(accuracy)}м)`
+        setTimeout(() => { success.value = null }, 3000)
+      }
+      
+      loading.value = false
+    },
+    (err) => {
+      let errorMsg = 'Неизвестная ошибка'
+      if (err.code === 1) errorMsg = 'Доступ к геолокации запрещён'
+      if (err.code === 2) errorMsg = 'Геолокация недоступна'
+      if (err.code === 3) errorMsg = 'Превышено время ожидания'
+      
+      error.value = errorMsg
+      loading.value = false
+      console.error('Ошибка геолокации:', err)
+    }
+  )
+}
 
 // ===== LOAD OBJECTS =====
-
-
-
-//
-// ===== LOAD OBJECTS (FIXED) =====
-//
 const loadObjects = async (type) => {
   loading.value = true
   error.value = null
+  success.value = null
   selectedCategory.value = type
 
   try {
+    console.log(`\n📍 Загружаем объекты типа: ${type}`)
+    
     const res = await axios.get('http://localhost:8000/api/objects', {
       params: { type }
     })
 
     const objects = res.data
+    console.log(`✅ Получено ${objects.length} объектов`)
 
-    //
-    // ✅ FIX 2: безопасное удаление clusterer
-    //
-    if (clusterer) {
-      map.removeChild(clusterer)
-      clusterer = null
+    // ✅ Очищаем старые маркеры
+// 🔥 Полная очистка через пересоздание
+
+
+
+    objectsCount.value = 0
+
+    if (!objects || objects.length === 0) {
+      console.warn('⚠️ Объектов не найдено')
+      error.value = `Объектов типа "${type}" не найдено`
+      loading.value = false
+      return
     }
 
-    const features = objects.map(obj => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: obj.coords
-      },
-      properties: obj
-    }))
+    const color = getColorByType(type)
+    const features = []
 
-    const { YMapClusterer, clusterByGrid, YMapMarker } = window.ymaps3
-
-    clusterer = new YMapClusterer({
-      method: clusterByGrid({ gridSize: 64 }),
-      features,
-
-      marker: (feature) => {
-        const el = document.createElement('div')
-
-        //
-        // ❌ FIX 3: getColor → getColorByType
-        //
-        el.innerHTML = `
-          <div style="
-            width:14px;
-            height:14px;
-            background:${getColorByType(feature.properties.type_name || type)};
-            border-radius:50%;
-            border:2px solid white;
-            box-shadow:0 0 8px rgba(0,0,0,0.3);
-            cursor:pointer;
-          "></div>
-        `
-
-        el.onclick = () => {
-          alert(
-            `${feature.properties.name}\n${feature.properties.address || ''}`
-          )
+    // ✅ Формируем features
+    objects.forEach((obj, index) => {
+      try {
+        const feature = {
+          type: 'Feature',
+          id: `marker-${index}`,
+          geometry: {
+            type: 'Point',
+            coordinates: [obj.coords[0], obj.coords[1]]
+          },
+          properties: {
+            title: obj.name || `Объект ${index + 1}`,
+            description: obj.address || 'Адрес не указан',
+            color: color
+          }
         }
-
-        return new YMapMarker(
-          { coordinates: feature.geometry.coordinates },
-          el
-        )
-      },
-
-      cluster: (coordinates, features) => {
-        const el = document.createElement('div')
-
-        el.innerHTML = `
-          <div style="
-            width:34px;
-            height:34px;
-            border-radius:50%;
-            background:#007aff;
-            color:white;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-weight:700;
-            box-shadow:0 0 10px rgba(0,0,0,0.3);
-          ">
-            ${features.length}
-          </div>
-        `
-
-        return new YMapMarker({ coordinates }, el)
+        features.push(feature)
+      } catch (e) {
+        console.warn(`⚠️ Ошибка при обработке объекта #${index}`)
       }
     })
 
-    map.addChild(clusterer)
+    // ✅ Добавляем все features в DataSource
+    if (features.length > 0) {
+      dataSource.update({
+            features
+        })
+      objectsCount.value = features.length
+      success.value = `✅ Загружено ${features.length} объектов`
+      console.log(`✅ Успешно добавлено ${features.length} маркеров`)
+      setTimeout(() => { success.value = null }, 2000)
+    }
 
-  } catch (e) {
-    error.value = 'Ошибка загрузки объектов'
-    console.error(e)
-  } finally {
+  } 
+  catch (e) {
+    error.value = `Ошибка загрузки: ${e.message}`
+    console.error('❌ Полная ошибка:', e)
+  } 
+  finally {
     loading.value = false
   }
 }
 
 // ===== LIFE CYCLE =====
 onMounted(async () => {
-    console.log("тууууууут YANDEX KEY =", import.meta.env.VITE_YANDEX_MAPS_KEY)
+  console.clear()
+  console.log("=" .repeat(60))
+  console.log("🗺️  ИНИЦИАЛИЗАЦИЯ КАРТЫ УФЫ")
+  console.log("=" .repeat(60))
 
-  await loadYmaps(import.meta.env.VITE_YANDEX_MAPS_KEY)
-  
-  await initMap()
-  await loadObjects(categories[0])
+  try {
+    const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY
+    if (!apiKey) {
+      throw new Error('API ключ не найден (VITE_YANDEX_MAPS_KEY)')
+    }
+
+    console.log('1️⃣  Загружаем Yandex Maps...')
+    await loadYmaps(apiKey)
+
+    console.log('2️⃣  Инициализируем карту...')
+    await initMap()
+
+    console.log('3️⃣  Загружаем первую категорию...')
+    await loadObjects(categories[0])
+    
+    console.log("=" .repeat(60))
+    console.log("✅ ВСЁ ГОТОВО! КАРТА РАБОТАЕТ!")
+    console.log("=" .repeat(60))
+  } catch (e) {
+    error.value = `Критическая ошибка: ${e.message}`
+    console.error('❌ Ошибка при инициализации:', e)
+  }
 })
 
 onBeforeUnmount(() => {
-  if (map) map.destroy()
+  if (map) {
+    map.destroy()
+    map = null
+  }
+  dataSource = null
 })
 </script>
 
 <style scoped>
-/* ===================== ОСНОВНОЙ КОНТЕЙНЕР ===================== */
 .map-page {
   position: relative;
   width: 97vw;
@@ -382,7 +388,6 @@ onBeforeUnmount(() => {
   border-radius: 5px;
 }
 
-/* ===================== ПЛАВАЮЩАЯ ПАНЕЛЬ (ОВЕРЛЕЙ) ===================== */
 .map-overlay {
   position: absolute;
   top: 0;
@@ -390,122 +395,209 @@ onBeforeUnmount(() => {
   right: 0;
   z-index: 10;
   pointer-events: none;
-  padding: 5px 40px;
-  display: flex;           /* 👈 Добавил: флекс-контейнер */
-  flex-direction: column;  /* 👈 Элементы друг под другом */
-  align-items: center;     /* 👈 Заголовок по центру */
+  padding: 10px 20px;
+  display: flex;           
+  flex-direction: column;  
+  align-items: center;     
 }
 
-/* Включаем клики внутри панели */
 .map-overlay * {
   pointer-events: auto;
 }
 
-/* Шапка */
 .map-header {
-  background: rgba(255, 255, 255, 0.766);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(20px);
-  padding: 12px 20px;
+  padding: 12px 24px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  max-width: 400px;
-  margin: 0 auto 12px;  /* 👈 auto центрирует */
+  max-width: 500px;
+  margin: 0 auto 12px;
   text-align: center;
-  pointer-events: auto; /* 👈 Включаем клики */
 }
 
-.map-header h1 {
+.map-header h3 {
   color: #1E293B;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
-  margin: 0 0 4px;
-}
-
-.subtitle {
-  color: #64748B;
-  font-size: 13px;
   margin: 0;
 }
 
-/* Кнопки-фильтры */
+.controls-panel {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.controls-group {
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.control-btn {
+  width: 44px;
+  height: 44px;
+  border: 2px solid #007bff;
+  background: white;
+  color: #007bff;
+  font-size: 18px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.control-btn:hover {
+  background: #007bff;
+  color: white;
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.4);
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.zoom-info {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1E293B;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  min-width: 80px;
+  text-align: center;
+}
+
 .button-group {
   position: absolute;      
-  left: 40px;              
-  top: 75px;              
+  left: 20px;              
+  top: 140px;              
   
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
   
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  padding: 12px 16px;
+  padding: 12px 14px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  max-width: 220px;        /* 👈 Ограничиваем ширину */
-  margin: 0;               /* 👈 Убираем auto */
+  max-width: 240px;       
   
-  pointer-events: auto;    /* 👈 Включаем клики */
+  overflow-y: auto;
+  max-height: 55vh;
 }
 
-.button-group button {
-  padding: 8px 16px;
-  border: 2px solid #007bff;
+.button-group::-webkit-scrollbar {
+  width: 6px;
+}
+
+.button-group::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+}
+
+.button-group::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.category-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.category-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px solid #cbd5e1;
   background: white;
-  color: #007bff;
-  font-size: 13px;
+  color: #334155;
+  font-size: 12px;
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
+  text-align: left;
 }
 
-.button-group button:hover {
+.category-btn:hover {
+  border-color: #007bff;
+  color: #007bff;
+  background: #f0f9ff;
+}
+
+.category-btn.active {
   background: #007bff;
-  color: white;
-  transform: translateY(-2px);
-}
-
-.button-group button.active {
-  background: #0056b3;
-  border-color: #0056b3;
+  border-color: #007bff;
   color: white;
   font-weight: 600;
 }
 
-/* ===================== ИНДИКАТОР ЗАГРУЗКИ ===================== */
+.info-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(34, 197, 94, 0.92);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 .loading-overlay {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 20;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 16px 24px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 20px 32px;
   border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   color: #1E293B;
   font-weight: 500;
+  backdrop-filter: blur(10px);
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: 3px solid #e2e8f0;
   border-top-color: #007bff;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* ===================== СООБЩЕНИЕ ОБ ОШИБКЕ ===================== */
 .error-overlay {
   position: absolute;
   top: 20px;
@@ -513,29 +605,86 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   z-index: 20;
   background: #fef2f2;
-  border: 1px solid #fecaca;
+  border: 2px solid #fecaca;
   color: #dc2626;
   padding: 12px 20px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.15);
   max-width: 400px;
+  flex-wrap: wrap;
+  backdrop-filter: blur(10px);
 }
 
-.error-overlay button {
-  background: #dc2626;
-  color: white;
+.close-btn {
+  background: none;
   border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
+  color: #dc2626;
+  font-size: 20px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 0;
+  margin-left: 8px;
+  transition: transform 0.2s;
 }
 
-.error-overlay button:hover {
-  background: #b91c1c;
+.close-btn:hover {
+  transform: scale(1.2);
+}
+
+.success-overlay {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 20;
+  background: #dcfce7;
+  border: 2px solid #86efac;
+  color: #16a34a;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(22, 163, 74, 0.15);
+  animation: slideIn 0.3s ease-out;
+  backdrop-filter: blur(10px);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.map-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+}
+
+/* ===== CUSTOM MARKER ===== */
+.custom-marker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+  box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  background: white;
+  border-radius: 50%;
 }
 </style>
