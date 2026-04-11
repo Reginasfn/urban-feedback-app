@@ -78,7 +78,7 @@
   }
 
   .main-content.map-page{
-    padding-top: 30px;
+    padding-top: 50px;
     padding-bottom: 300px;
 
   }
