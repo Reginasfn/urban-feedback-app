@@ -2,16 +2,17 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 
+// PrimeVue
 import PrimeVue from 'primevue/config'
-import Aura from '@primevue/themes/aura' // Тема
+import Aura from '@primeuix/themes/aura'
 import ToastService from 'primevue/toastservice'
-import IftaLabel from 'primevue/iftalabel';
 
-
-// Импорт компонентов (можно импортировать всё или по отдельности)
+// Компоненты
 import Avatar from 'primevue/avatar'
+import IftaLabel from 'primevue/iftalabel'
 
-import 'primeicons/primeicons.css'
+// Глобальные стили
+import './styles/toasts.css'
 
 const app = createApp(App)
 
@@ -19,16 +20,16 @@ app.use(PrimeVue, {
     theme: {
         preset: Aura,
         options: {
-            darkModeSelector: false // или 'system' для авто-темы
+            darkModeSelector: false
         }
     }
 })
 
 app.use(ToastService)
-
 app.use(router)
 
+// Глобальная регистрация
 app.component('Avatar', Avatar)
-app.component('IftaLabel', IftaLabel);
+app.component('IftaLabel', IftaLabel)
 
 app.mount('#app')

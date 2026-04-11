@@ -77,7 +77,8 @@ import Button from 'primevue/button'
 import IftaLabel from 'primevue/iftalabel'
 
 export default {
-    name: 'LoginModal',    components: { Dialog, InputText, Password, Button, IftaLabel },
+    name: 'LoginModal',
+    components: { Dialog, InputText, Password, Button, IftaLabel },
     props: {
         visible: {
             type: Boolean,

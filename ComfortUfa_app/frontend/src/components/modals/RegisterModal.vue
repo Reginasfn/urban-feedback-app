@@ -16,18 +16,34 @@
             <div class="form-group">
                 <IftaLabel>
                     <i class="pi pi-user input-icon"></i>
-                    <InputText id="nickname" v-model="nickname" variant="filled" class="custom-input" />
-                    <label for="nickname">Никнейм</label>
+                    <InputText 
+                        id="nickname" 
+                        v-model="nickname" 
+                        variant="filled" 
+                        class="custom-input" 
+                        :class="{ 'p-invalid': submitted && !nickname }"
+                    />
+                    <label for="nickname">Никнейм *</label>
                 </IftaLabel>
+                <small v-if="submitted && !nickname" class="p-error">Введите никнейм</small>
             </div>
 
             <!-- Email -->
             <div class="form-group">
                 <IftaLabel>
                     <i class="pi pi-envelope input-icon"></i>
-                    <InputText id="email" v-model="email" type="email" variant="filled" class="custom-input" />
-                    <label for="email">Email</label>
+                    <InputText 
+                        id="email" 
+                        v-model="email" 
+                        type="email" 
+                        variant="filled" 
+                        class="custom-input" 
+                        :class="{ 'p-invalid': submitted && !email }"
+                    />
+                    <label for="email">Email *</label>
                 </IftaLabel>
+                <small v-if="submitted && !email" class="p-error">Введите email</small>
+                <small v-if="email && !isValidEmail(email)" class="p-error">Введите корректный email</small>
             </div>
 
             <!-- Телефон (InputMask) -->
@@ -60,10 +76,12 @@
                         weakLabel="Слабый"
                         mediumLabel="Средний"
                         strongLabel="Сильный"
+                        :class="{ 'p-invalid': submitted && !password }"
                     >
                         <template #header>
-                            <h6>Выберите пароль</h6>
-                        </template>                        <template #footer>
+                            <h6>Выберите пароль *</h6>
+                        </template>
+                        <template #footer>
                             <Divider />
                             <p class="mt-2 text-xs">Рекомендации:</p>
                             <ul class="pl-2 ml-2 mt-0 text-xs" style="line-height: 1.5">
@@ -74,8 +92,9 @@
                             </ul>
                         </template>
                     </Password>
-                    <label for="password">Пароль</label>
+                    <label for="password">Пароль *</label>
                 </IftaLabel>
+                <small v-if="submitted && !password" class="p-error">Введите пароль</small>
             </div>
 
             <!-- Confirm Password -->
@@ -89,9 +108,11 @@
                         variant="filled"
                         class="custom-input password-input"
                         inputClass="w-full"
+                        :class="{ 'p-invalid': submitted && password !== confirmPassword }"
                     />
-                    <label for="confirm-password">Повторите пароль</label>
+                    <label for="confirm-password">Повторите пароль *</label>
                 </IftaLabel>
+                <small v-if="submitted && password !== confirmPassword" class="p-error">Пароли не совпадают</small>
             </div>
 
             <Button
@@ -99,11 +120,18 @@
                 label="Создать профиль"
                 icon="pi pi-user-plus"
                 class="btn-register"
+                :loading="loading"
+                :disabled="loading"
             />
 
             <div class="login-link">
                 <span>Уже есть аккаунт?</span>
-                <Button label="Войти" link @click.prevent="$emit('switch-to-login')" class="p-0 font-bold ml-1" />
+                <Button 
+                    label="Войти" 
+                    link 
+                    @click.prevent="$emit('switch-to-login')" 
+                    class="p-0 font-bold ml-1" 
+                />
             </div>
 
         </form>
@@ -132,23 +160,117 @@ export default {
             email: '',
             phone: '',
             password: '',
-            confirmPassword: ''
+            confirmPassword: '',
+            submitted: false,
+            loading: false
         }
     },
     methods: {
-        handleSubmit() {
-            if (this.password !== this.confirmPassword) {
-                // Если у тебя подключен Toast, лучше вывести через него
-                alert('Пароли не совпадают!')
+        isValidEmail(email) {
+            const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+            return regex.test(email)
+        },
+        async handleSubmit() {
+            this.submitted = true
+            
+            // Валидация
+            if (!this.nickname.trim()) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: 'Введите никнейм',
+                    life: 3000,
+                    styleClass: 'my-error-toast'
+                })
                 return
             }
 
-            this.$emit('register', {
-                nickname: this.nickname,
-                email: this.email,
-                phone: this.phone,
-                password: this.password
-            })
+            if (!this.email.trim()) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: 'Введите email',
+                    life: 3000,
+                    styleClass: 'my-error-toast'
+                })
+                return
+            }
+
+            if (!this.isValidEmail(this.email)) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: 'Введите корректный email',
+                    life: 3000,
+                    styleClass: 'my-error-toast'
+                })
+                return
+            }
+
+            if (!this.password) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: 'Введите пароль',
+                    life: 3000,
+                    styleClass: 'my-error-toast'
+                })
+                return
+            }
+
+            if (this.password !== this.confirmPassword) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: 'Пароли не совпадают',
+                    life: 3000,
+                    styleClass: 'my-error-toast'
+                })
+                return
+            }
+
+            // Успешная регистрация
+            this.loading = true
+            try {
+                await new Promise(resolve => setTimeout(resolve, 1000))
+                
+                this.$emit('register', {
+                    nickname: this.nickname.trim(),
+                    email: this.email.trim(),
+                    phone: this.phone,
+                    password: this.password
+                })
+
+                this.$toast.add({
+                    severity: 'success',
+                    summary: 'Успешно',
+                    detail: 'Аккаунт создан! Теперь вы можете войти.',
+                    life: 3000,
+                    styleClass: 'my-success-toast'
+                })
+
+                this.resetForm()
+
+            } catch (error) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: 'Не удалось создать аккаунт',
+                    life: 3000,
+                    styleClass: 'my-error-toast'
+                })
+            } finally {
+                this.loading = false
+                this.submitted = false
+            }
+        },
+        resetForm() {
+            this.nickname = ''
+            this.email = ''
+            this.phone = ''
+            this.password = ''
+            this.confirmPassword = ''
+            this.submitted = false
         }
     }
 }
@@ -206,7 +328,7 @@ export default {
 }
 
 .p-button-link {
-    color: #168f04 !important; /* Твой зеленый цвет */
+    color: #168f04 !important;
 }
 
 /* Стиль диалога */
@@ -217,5 +339,13 @@ export default {
 
 :deep(.p-dialog-header) {
     padding: 1.5rem 1.5rem 0 1.5rem !important;
+}
+
+/* Стиль ошибок */
+.p-error {
+    color: #ef4444 !important;
+    font-size: 12px !important;
+    margin-top: 4px !important;
+    display: block;
 }
 </style>
