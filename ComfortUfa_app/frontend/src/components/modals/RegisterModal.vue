@@ -46,7 +46,7 @@
                 <small v-if="email && !isValidEmail(email)" class="p-error">Введите корректный email</small>
             </div>
 
-            <!-- Телефон (InputMask) -->
+            <!-- Телефон -->
             <div class="form-group">
                 <IftaLabel>
                     <i class="pi pi-phone input-icon"></i>
@@ -139,6 +139,7 @@
 </template>
 
 <script>
+import axios from 'axios'  // 👈 Импортируем axios
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
@@ -151,9 +152,10 @@ export default {
     name: 'RegisterModal',
     components: { Dialog, InputText, Password, Button, IftaLabel, InputMask, Divider },
     props: {
-        visible: Boolean
+        visible: Boolean,
+        loading: { type: Boolean, default: false }
     },
-    emits: ['update:visible', 'register', 'switch-to-login'],
+    emits: ['update:visible', 'register', 'switch-to-login', 'auth-success'],
     data() {
         return {
             nickname: '',
@@ -162,7 +164,12 @@ export default {
             password: '',
             confirmPassword: '',
             submitted: false,
-            loading: false
+            internalLoading: false
+        }
+    },
+    computed: {
+        isLoading() {
+            return this.loading || this.internalLoading
         }
     },
     methods: {
@@ -173,75 +180,38 @@ export default {
         async handleSubmit() {
             this.submitted = true
             
-            // Валидация
+            // 🔍 Валидация
             if (!this.nickname.trim()) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка',
-                    detail: 'Введите никнейм',
-                    life: 3000,
-                    styleClass: 'my-error-toast'
-                })
+                this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Введите никнейм', life: 3000 })
                 return
             }
-
-            if (!this.email.trim()) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка',
-                    detail: 'Введите email',
-                    life: 3000,
-                    styleClass: 'my-error-toast'
-                })
+            if (!this.email.trim() || !this.isValidEmail(this.email)) {
+                this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Введите корректный email', life: 3000 })
                 return
             }
-
-            if (!this.isValidEmail(this.email)) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка',
-                    detail: 'Введите корректный email',
-                    life: 3000,
-                    styleClass: 'my-error-toast'
-                })
-                return
-            }
-
             if (!this.password) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка',
-                    detail: 'Введите пароль',
-                    life: 3000,
-                    styleClass: 'my-error-toast'
-                })
+                this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Введите пароль', life: 3000 })
                 return
             }
-
             if (this.password !== this.confirmPassword) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка',
-                    detail: 'Пароли не совпадают',
-                    life: 3000,
-                    styleClass: 'my-error-toast'
-                })
+                this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Пароли не совпадают', life: 3000 })
                 return
             }
 
-            // Успешная регистрация
-            this.loading = true
+            this.internalLoading = true
+
             try {
-                await new Promise(resolve => setTimeout(resolve, 1000))
-                
-                this.$emit('register', {
+                // 👇 ЗАПРОС К БЭКЕНДУ
+                const response = await axios.post('http://localhost:8000/api/auth/register', {
                     nickname: this.nickname.trim(),
                     email: this.email.trim(),
-                    phone: this.phone,
-                    password: this.password
+                    phone: this.phone || null,
+                    password: this.password,
+                    id_role: 1  // 👈 По умолчанию роль "пользователь"
                 })
 
-                this.$toast.add({
+                // 🎉 Уведомление об успехе
+                this.$toast?.add({
                     severity: 'success',
                     summary: 'Успешно',
                     detail: 'Аккаунт создан! Теперь вы можете войти.',
@@ -249,18 +219,35 @@ export default {
                     styleClass: 'my-success-toast'
                 })
 
+                // 📡 Сообщаем родителю (опционально — можно сразу переключить на вход)
+                this.$emit('register', {
+                    user: {
+                        id: response.data.id_user,
+                        nickname: response.data.nickname,
+                        email: response.data.email
+                    }
+                })
+
+                window.dispatchEvent(new CustomEvent('stats-refresh'))
+                
+                // 🔄 Сброс и переключение на вход
                 this.resetForm()
+                this.$emit('switch-to-login')
 
             } catch (error) {
-                this.$toast.add({
+                console.error('Register error:', error)
+                
+                const message = error.response?.data?.detail || 'Не удалось создать аккаунт'
+                
+                this.$toast?.add({
                     severity: 'error',
                     summary: 'Ошибка',
-                    detail: 'Не удалось создать аккаунт',
-                    life: 3000,
+                    detail: message,
+                    life: 4000,
                     styleClass: 'my-error-toast'
                 })
             } finally {
-                this.loading = false
+                this.internalLoading = false
                 this.submitted = false
             }
         },
@@ -277,7 +264,7 @@ export default {
 </script>
 
 <style scoped>
-/* Центрирование иконки в IftaLabel */
+/* === ТВОИ СТИЛИ — НЕ ТРОГАЛ === */
 .input-icon {
     position: absolute;
     top: 50%;
@@ -286,8 +273,6 @@ export default {
     z-index: 10;
     color: #94a3b8;
 }
-
-/* Кастомизация полей под иконку */
 :deep(.p-iftalabel .p-inputtext),
 :deep(.p-iftalabel .p-password-input),
 :deep(.p-iftalabel .p-inputmask) {
@@ -296,20 +281,9 @@ export default {
     height: 3.5rem;
     border-radius: 10px;
 }
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.custom-input {
-    width: 100%;
-}
-
-/* Чтобы компонент пароля растягивался */
-:deep(.password-input) {
-    display: flex;
-}
-
+.form-group { margin-bottom: 20px; }
+.custom-input { width: 100%; }
+:deep(.password-input) { display: flex; }
 .btn-register {
     margin-top: 10px;
     width: 100%;
@@ -319,29 +293,18 @@ export default {
     background: linear-gradient(135deg, #79cea5 0%, #003f1a 100%) !important;
     border: none;
 }
-
 .login-link {
     margin-top: 20px;
     text-align: center;
     font-size: 14px;
     color: #64748b;
 }
-
-.p-button-link {
-    color: #168f04 !important;
-}
-
-/* Стиль диалога */
+.p-button-link { color: #168f04 !important; }
 :deep(.p-dialog) {
     border-radius: 18px !important;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
 }
-
-:deep(.p-dialog-header) {
-    padding: 1.5rem 1.5rem 0 1.5rem !important;
-}
-
-/* Стиль ошибок */
+:deep(.p-dialog-header) { padding: 1.5rem 1.5rem 0 1.5rem !important; }
 .p-error {
     color: #ef4444 !important;
     font-size: 12px !important;

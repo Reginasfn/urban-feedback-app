@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.endpoints import objects, stats  # Импортируем роутер объектов
+from api.endpoints import objects, stats, auth  # Импортируем роутер объектов
 
 # 🎯 Создаём приложение FastAPI
 app = FastAPI(
@@ -29,6 +29,7 @@ app.add_middleware(
 # 📦 Подключаем роутеры (эндпоинты)
 app.include_router(objects.router)
 app.include_router(stats.router)
+app.include_router(auth.router)
 
 @app.get("/", tags=["Главная"])
 async def root():

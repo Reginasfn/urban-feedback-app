@@ -52,42 +52,6 @@ export default {
                 this.$router.push('/favorites')
             }
         },
-        async handleLogin(credentials) {
-            if (!credentials.email || !credentials.password) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка',
-                    detail: 'Заполните email и пароль',
-                    life: 3000,
-                    styleClass: 'my-error-toast'
-                })
-                return
-            }
-
-            try {
-                this.isAuth = true
-                this.showLoginModal = false
-
-                this.$toast.add({
-                    severity: 'success',
-                    summary: 'Успешно',
-                    detail: 'Вы вошли в систему',
-                    life: 3000,
-                    styleClass: 'my-success-toast'
-                })
-
-                this.$router.push('/profile')
-
-            } catch (error) {
-                this.$toast.add({
-                    severity: 'error',
-                    summary: 'Ошибка входа',
-                    detail: 'Неверный email или пароль',
-                    life: 4000,
-                    styleClass: 'my-error-toast'
-                })
-            }
-        },
         handleCloseModal() {},
         handleRegisterClick() {
             this.showLoginModal = false
@@ -108,14 +72,6 @@ export default {
         handleRegister(credentials) {
             console.log('REGISTER:', credentials)
             this.showRegisterModal = false
-
-            this.$toast.add({
-                severity: 'success',
-                summary: 'Успешно',
-                detail: 'Аккаунт создан',
-                life: 3000,
-                styleClass: 'my-success-toast'
-            })
 
             this.showLoginModal = true
         }

@@ -9,21 +9,19 @@ class ObjectResponse(BaseModel):
     Схема ответа для объекта благоустройства.
     Соответствует структуре таблицы public.objects
     """
-    id_object: int  # Первичный ключ
-    name: str = Field(..., min_length=1, max_length=200)  # Название объекта
-    id_type: int  # ID типа объекта (внешний ключ на таблицу types)
-    address: Optional[str] = Field(None, max_length=300)  # Адрес
-    coords: List[float] = Field(..., min_length=2, max_length=2)  # [широта, долгота]
-    id_status: Optional[int] = None  # ID статуса
-    created_by: Optional[int] = None  # Кто создал
-    created_at: Optional[datetime] = None  # Дата создания
-    osm_id: Optional[int] = None  # ID из OpenStreetMap (если есть)
+    id_object: int
+    name: str = Field(..., min_length=1, max_length=200)
+    id_type: int
+    address: Optional[str] = Field(None, max_length=300)
+    coords: List[float] = Field(..., min_length=2, max_length=2)
+    id_status: Optional[int] = None
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    osm_id: Optional[int] = None
     
-    # 🔍 Валидация координат
     @field_validator('coords')
     @classmethod
     def validate_coords(cls, v):
-        """Проверка: координаты должны быть в допустимых диапазонах"""
         if len(v) != 2:
             raise ValueError('coords должен содержать ровно 2 значения [lat, lon]')
         lat, lon = v
@@ -34,7 +32,7 @@ class ObjectResponse(BaseModel):
         return v
     
     class Config:
-        from_attributes = True  # Разрешаем создание из SQLAlchemy моделей
+        from_attributes = True
         json_schema_extra = {
             "example": {
                 "id_object": 1,
@@ -52,11 +50,10 @@ class ObjectResponse(BaseModel):
 class ObjectWithTypeName(BaseModel):
     """
     Расширенная схема с названием типа (для фронтенда).
-    Использует JOIN с таблицей types.
     """
     id_object: int
     name: str
-    type_name: str  # Название типа (например, "Фонарь")
+    type_name: str
     address: Optional[str]
     coords: List[float]
     id_status: Optional[int]
@@ -72,12 +69,8 @@ class ObjectWithTypeName(BaseModel):
     class Config:
         from_attributes = True
 
-# ===== НОВАЯ СХЕМА ДЛЯ СТАТИСТИКИ =====
+# ===== СХЕМА ДЛЯ СТАТИСТИКИ =====
 class PlatformStats(BaseModel):
-    """
-    Схема ответа для статистики платформы.
-    Содержит основные метрики для главной страницы.
-    """
     total_objects: int = Field(..., description="Общее количество объектов на карте")
     total_problems: int = Field(..., description="Количество отзывов с категорией 'Проблема'")
     total_users: int = Field(..., description="Общее количество зарегистрированных пользователей")
@@ -90,3 +83,53 @@ class PlatformStats(BaseModel):
                 "total_users": 3421
             }
         }
+
+# ===== СХЕМЫ ДЛЯ АВТОРИЗАЦИИ =====
+
+class UserCreate(BaseModel):
+    """Схема для регистрации нового пользователя"""
+    email: str = Field(..., min_length=5, max_length=255, example="user@example.com")
+    nickname: str = Field(..., min_length=3, max_length=100, example="ivan_ufa")
+    phone: Optional[str] = Field(None, max_length=20, example="+79991234567")
+    password: str = Field(..., min_length=6, max_length=72, example="SecurePass123")
+    id_role: Optional[int] = Field(None, description="ID роли (по умолчанию 1 - пользователь)")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if '@' not in v or '.' not in v.split('@')[-1]:
+            raise ValueError('Некорректный email')
+        return v.lower()
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_length(cls, v):
+        if len(v.encode('utf-8')) > 72:
+            raise ValueError('Пароль не должен превышать 72 символа')
+        return v
+
+class UserLogin(BaseModel):
+    """Схема для входа"""
+    email: str = Field(..., example="user@example.com")
+    password: str = Field(..., example="SecurePass123")
+
+class Token(BaseModel):
+    """Ответ с токеном после успешного входа"""
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    nickname: str
+    role: Optional[str] = None
+
+class UserResponse(BaseModel):
+    """Информация о текущем пользователе"""
+    id_user: int
+    email: str
+    nickname: str
+    phone: Optional[str] = None
+    id_role: Optional[int] = None
+    role_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True

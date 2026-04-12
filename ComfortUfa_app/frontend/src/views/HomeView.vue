@@ -133,11 +133,7 @@ export default {
   name: 'HomeView',
   data() {
     return {
-      stats: {
-        marks: 0, //колво объектов
-        solved: 0, //колво проблем
-        users: 0 //колво пользователей
-      },
+      stats: { marks: 0, solved: 0, users: 0 },
       loadingStats: true,
       statsError: null
     }
@@ -145,33 +141,33 @@ export default {
 
   async mounted() {
     await this.fetchStats()
+    
+    // 👇 Слушаем событие обновления статистики
+    window.addEventListener('stats-refresh', this.fetchStats)
+  },
+  
+  beforeUnmount() {
+    // 👇 Очищаем слушатель при уходе со страницы
+    window.removeEventListener('stats-refresh', this.fetchStats)
   },
 
-  methods:{
-    async fetchStats(){
-      try{
+  methods: {
+    async fetchStats() {
+      try {
         this.loadingStats = true
         this.statsError = null
 
         const response = await axios.get('http://localhost:8000/api/stats')
-        // 👇 Обновляем статистику реальными данными
         this.stats = {
-          marks: response.data.total_objects,    // Объекты
-          solved: response.data.total_problems,  // Проблемы
-          users: response.data.total_users       // Пользователи
+          marks: response.data.total_objects,
+          solved: response.data.total_problems,
+          users: response.data.total_users
         }
-        
-        console.log('✅ Статистика загружена:', this.stats)
+        console.log('✅ Статистика обновлена:', this.stats)
       }
       catch (error) {
-        console.error('❌ Ошибка загрузки статистики:', error)
+        console.error('❌ Ошибка:', error)
         this.statsError = 'Не удалось загрузить статистику'
-        
-        this.stats = {
-          marks: 100,
-          solved: 100,
-          users: 100
-        } 
       }
       finally {
         this.loadingStats = false
@@ -179,6 +175,7 @@ export default {
     }
   }
 }
+
 </script>
 
 <style scoped>

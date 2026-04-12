@@ -70,6 +70,7 @@
 </template>
 
 <script>
+import axios from 'axios'  // 👈 Импортируем axios
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
@@ -80,32 +81,97 @@ export default {
     name: 'LoginModal',
     components: { Dialog, InputText, Password, Button, IftaLabel },
     props: {
-        visible: {
-            type: Boolean,
-            required: true
-        },
-        loading: {
-            type: Boolean,
-            default: false
-        }
+        visible: { type: Boolean, required: true },
+        loading: { type: Boolean, default: false }
     },
-    emits: ['update:visible', 'login', 'close', 'register', 'switch-to-register'],
+    emits: ['update:visible', 'login', 'close', 'register', 'switch-to-register', 'auth-success'],
     data() {
         return {
             localEmail: '',
-            localPassword: ''
+            localPassword: '',
+            internalLoading: false  // 👈 Локальный флаг загрузки
+        }
+    },
+    computed: {
+        // Объединяем внешний и внутренний loading
+        isLoading() {
+            return this.loading || this.internalLoading
         }
     },
     watch: {
         visible(newVal) {
-            if (!newVal) {
-                this.resetForm()
-            }
+            if (!newVal) this.resetForm()
         }
     },
     methods: {
-        handleSubmit() {
-            this.$emit('login', { email: this.localEmail, password: this.localPassword })
+        async handleSubmit() {
+            if (!this.localEmail || !this.localPassword) {
+                this.$toast?.add({
+                    severity: 'warn',
+                    summary: 'Заполните поля',
+                    detail: 'Введите email и пароль',
+                    life: 3000,
+                    styleClass: 'my-big-toast'
+                })
+                return
+            }
+
+            this.internalLoading = true
+
+            try {
+                // 👇 ЗАПРОС К БЭКЕНДУ
+                const response = await axios.post('http://localhost:8000/api/auth/login', {
+                    email: this.localEmail.trim(),
+                    password: this.localPassword
+                })
+
+                // 💾 Сохраняем токен и данные пользователя
+                localStorage.setItem('auth_token', response.data.access_token)
+                localStorage.setItem('user', JSON.stringify({
+                    id: response.data.user_id,
+                    nickname: response.data.nickname,
+                    role: response.data.role
+                }))
+
+                // 🎉 Уведомление об успехе
+                this.$toast?.add({
+                    severity: 'success',
+                    summary: 'Успешно',
+                    detail: `Добро пожаловать, ${response.data.nickname}!`,
+                    life: 3000,
+                    styleClass: 'my-success-toast'
+                })
+
+                // 📡 Сообщаем родителю об успехе
+                this.$emit('auth-success', {
+                    token: response.data.access_token,
+                    user: {
+                        id: response.data.user_id,
+                        nickname: response.data.nickname,
+                        role: response.data.role
+                    }
+                })
+
+                window.dispatchEvent(new CustomEvent('stats-refresh'))
+
+                this.$emit('update:visible', false)
+                this.resetForm()
+
+            } catch (error) {
+                console.error('Login error:', error)
+                
+                const message = error.response?.data?.detail || 'Ошибка входа. Проверьте данные.'
+                
+                this.$toast?.add({
+                    severity: 'error',
+                    summary: 'Ошибка',
+                    detail: message,
+                    life: 4000,
+                    styleClass: 'my-error-toast'
+                })
+            } finally {
+                this.internalLoading = false
+            }
         },
         resetForm() {
             this.localEmail = ''
@@ -116,7 +182,7 @@ export default {
 </script>
 
 <style scoped>
-/* Центрирование иконки в IftaLabel */
+/* === ТВОИ СТИЛИ — НЕ ТРОГАЛ === */
 .input-icon {
     position: absolute;
     top: 50%;
@@ -125,8 +191,6 @@ export default {
     z-index: 10;
     color: #94a3b8;
 }
-
-/* Кастомизация полей под иконку */
 :deep(.p-iftalabel .p-inputtext),
 :deep(.p-iftalabel .p-password-input) {
     padding-left: 2.5rem !important;
@@ -134,22 +198,9 @@ export default {
     height: 3.5rem;
     border-radius: 10px;
 }
-
-.form-group {
-    margin-bottom: 20px;
-    display: flex;
-    flex-direction: column;
-}
-
-.custom-input {
-    width: 100%;
-}
-
-/* Растягиваем блок пароля */
-:deep(.password-input) {
-    display: flex;
-}
-
+.form-group { margin-bottom: 20px; display: flex; flex-direction: column; }
+.custom-input { width: 100%; }
+:deep(.password-input) { display: flex; }
 .btn-login {
     margin-top: 10px;
     width: 100%;
@@ -159,7 +210,6 @@ export default {
     background: linear-gradient(135deg, #79cea5 0%, #003f1a 100%) !important;
     border: none !important;
 }
-
 .register-link {
     margin-top: 20px;
     text-align: center;
@@ -168,25 +218,15 @@ export default {
     padding-top: 16px;
     border-top: 1px solid #f1f5f9;
 }
-
-/* Твой фирменный зеленый цвет для ссылки */
 :deep(.p-button.p-button-link) {
     color: #168f04 !important;
     text-decoration: none;
 }
-
-:deep(.p-button.p-button-link:hover) {
-    text-decoration: underline;
-}
-
-/* Стили самого диалога */
+:deep(.p-button.p-button-link:hover) { text-decoration: underline; }
 :deep(.p-dialog) {
     border-radius: 18px !important;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
     border: none;
 }
-
-:deep(.p-dialog-header) {
-    padding: 1.5rem 1.5rem 0 1.5rem !important;
-}
+:deep(.p-dialog-header) { padding: 1.5rem 1.5rem 0 1.5rem !important; }
 </style>
