@@ -182,6 +182,12 @@ import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
 
+// 👇 ИМПОРТ С ПЕРЕИМЕНОВАНИЕМ, чтобы не было конфликта имён
+import { 
+  isAuthenticated as checkAuth,  // 👈 Функция проверки (переименовали)
+  getCurrentUser 
+} from '@/utils/auth'
+
 // ===== Состояние =====
 const mapContainer = ref(null)
 const loading = ref(false)
@@ -195,8 +201,23 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const currentLayer = ref('map')
 
-// 👇 Аутентификация и отзывы
-const isAuthenticated = ref(false)
+// 👇 Аутентификация — теперь без конфликта имён!
+const isAuthenticated = ref(checkAuth())  // ✅ Вызываем функцию checkAuth()
+
+// 👇 Слушаем изменения авторизации
+onMounted(() => {
+  const handleAuthChange = (event) => {
+    isAuthenticated.value = event.detail.isAuthenticated
+  }
+  
+  window.addEventListener('auth-change', handleAuthChange)
+  
+  // 👇 Очищаем слушатель при размонтировании
+  onBeforeUnmount(() => {
+    window.removeEventListener('auth-change', handleAuthChange)
+  })
+})
+
 const bookmarkedObjects = ref(new Set())
 const showReviewModal = ref(false)
 const selectedObjectForReview = ref(null)
@@ -205,8 +226,8 @@ const selectedObjectForReview = ref(null)
 const isAddingMode = ref(false)
 const showAddConfirm = ref(false)
 const showObjectModal = ref(false)
-const pendingObjectCoords = ref(null) // [lat, lon] для подтверждения
-const confirmPosition = ref({ top: '0px', left: '0px' }) // позиция попапа подтверждения
+const pendingObjectCoords = ref(null)
+const confirmPosition = ref({ top: '0px', left: '0px' })
 
 // Категории отзывов
 const reviewCategories = [
@@ -384,10 +405,8 @@ const createMapInstance = () => {
                 map.options.set('suppressMapOpenBlock', true)
                 map.behaviors.disable('dblClickZoom')
                 
-                // 👇 ДОБАВЬТЕ ЭТОТ БЛОК:
                 // Обработчик клика по карте для добавления объектов
                 map.events.add('click', (e) => {
-                    // Если в режиме добавления - вызываем наш обработчик
                     if (isAddingMode.value) {
                         handleMapClick(e)
                     }
@@ -404,9 +423,7 @@ const createMapInstance = () => {
                 
                 map.events.add('click', (e) => {
                     const target = e.get('target')
-                    // Если в режиме добавления - обрабатываем клик отдельно
                     if (isAddingMode.value) return
-                    
                     if (!target?.options?.get('isOurObject') && target !== clusterer) {
                         e.stopPropagation()
                         return false
@@ -614,7 +631,6 @@ window.__openReview = (objectId, objectName, objectType) => {
 // ===== ОБРАБОТЧИКИ ДЛЯ REVIEWMODAL =====
 const handleReviewSubmit = async ({ formData }) => {
   loading.value = true
-  
   try {
     await new Promise(resolve => setTimeout(resolve, 1200))
     success.value = 'Отзыв успешно отправлен!'
@@ -628,37 +644,24 @@ const handleReviewSubmit = async ({ formData }) => {
   }
 }
 
-const handleReviewCancel = () => {
-  console.log('[ReviewModal] Отменено')
-}
+const handleReviewCancel = () => { console.log('[ReviewModal] Отменено') }
+const handleReviewError = ({ message }) => { error.value = message; setTimeout(() => { error.value = null }, 3000) }
 
-const handleReviewError = ({ message }) => {
-  error.value = message
-  setTimeout(() => { error.value = null }, 3000)
-}
-
-// ===== 3. WATCHERS (отслеживание изменений) ===== 👈 СЮДА
+// ===== WATCHERS =====
 watch(isAddingMode, (newValue) => {
   if (!map) return
-  
   if (newValue) {
     map.behaviors.disable('drag')
     map.behaviors.disable('scrollZoom')
-    if (mapContainer.value) {
-      mapContainer.value.style.cursor = 'crosshair'
-    }
+    if (mapContainer.value) mapContainer.value.style.cursor = 'crosshair'
   } else {
     map.behaviors.enable('drag')
     map.behaviors.enable('scrollZoom')
-    if (mapContainer.value) {
-      mapContainer.value.style.cursor = 'grab'
-    }
+    if (mapContainer.value) mapContainer.value.style.cursor = 'grab'
   }
 })
 
-// ===== 🔽 НОВЫЕ ФУНКЦИИ ДЛЯ ДОБАВЛЕНИЯ ОБЪЕКТОВ 🔽 =====
-
-// Включение/выключение режима добавления
+// ===== ФУНКЦИИ ДЛЯ ДОБАВЛЕНИЯ ОБЪЕКТОВ =====
 const toggleAddMode = () => {
   if (!isAuthenticated.value) {
     error.value = 'Необходимо авторизоваться, чтобы добавлять объекты'
@@ -666,31 +669,20 @@ const toggleAddMode = () => {
     return
   }
   isAddingMode.value = !isAddingMode.value
-  if (!isAddingMode.value) {
-    // Если выключили режим - скрываем подтверждение
-    showAddConfirm.value = false
-  }
+  if (!isAddingMode.value) showAddConfirm.value = false
 }
 
-// ===== ГЕОКОДИРОВАНИЕ (координаты → адрес) =====
 const getAddressFromCoords = async (coords) => {
   try {
-    // Используем API геокодирования Яндекса
     const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
     const [lat, lon] = coords
-    
     const response = await axios.get(
       `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lon},${lat}&results=1&lang=ru_RU&format=json`
     )
-    
     const geoObjects = response.data.response.GeoObjectCollection.featureMember
-    
     if (geoObjects.length > 0) {
-      const address = geoObjects[0].GeoObject.metaDataProperty.GeocoderMetaData.text
-      console.log('📍 Найден адрес:', address)
-      return address
+      return geoObjects[0].GeoObject.metaDataProperty.GeocoderMetaData.text
     }
-    
     return null
   } catch (err) {
     console.error('[Geocoding] Ошибка:', err)
@@ -698,87 +690,51 @@ const getAddressFromCoords = async (coords) => {
   }
 }
 
-// Обработчик клика по карте
 const handleMapClick = async (e) => {
-  // Если не в режиме добавления или карта не готова - игнорируем
   if (!isAddingMode.value || !map) return
-  
-  // Получаем координаты клика
   const coords = e.get('coords')
   if (!coords) return
-  
-  // Предотвращаем стандартное поведение
   e.stopPropagation()
   e.preventDefault()
-
-  // Сохраняем координаты для подтверждения
   pendingObjectCoords.value = coords
-  
-  // 👇 ПОЛУЧАЕМ АДРЕС ПО КООРДИНАТАМ
   const address = await getAddressFromCoords(coords)
-  
-  // Вычисляем позицию для попапа подтверждения
   const containerRect = mapContainer.value?.getBoundingClientRect()
   if (containerRect) {
     const position = e.get('position')
-    const x = position[0]
-    const y = position[1]
-    
     confirmPosition.value = {
-      top: `${y + 10}px`,
-      left: `${x + 10}px`
+      top: `${position[1] + 10}px`,
+      left: `${position[0] + 10}px`
     }
   }
-  
-  // Показываем подтверждение с адресом
   if (address) {
     success.value = `Адрес: ${address}`
     setTimeout(() => { success.value = null }, 4000)
   }
-  
   showAddConfirm.value = true
 }
 
-// Отмена добавления объекта
 const cancelAddObject = () => {
   showAddConfirm.value = false
   pendingObjectCoords.value = null
-  isAddingMode.value = false // выходим из режима
+  isAddingMode.value = false
 }
 
-// Подтверждение: открываем модалку для заполнения данных
 const confirmAddObject = async () => {
-    if (!pendingObjectCoords.value || !Array.isArray(pendingObjectCoords.value)) {
-        error.value = 'Координаты не определены'
-        setTimeout(() => { error.value = null }, 3000)
+  if (!pendingObjectCoords.value || !Array.isArray(pendingObjectCoords.value)) {
+    error.value = 'Координаты не определены'
+    setTimeout(() => { error.value = null }, 3000)
     return
   }
-  
   showAddConfirm.value = false
-  
-  // 👇 ПОЛУЧАЕМ АДРЕС ПЕРЕ ОТКРЫТИЕМ МОДАЛКИ
-  const address = await getAddressFromCoords(pendingObjectCoords.value)
-  
-  // Передаём адрес в модалку (нужно добавить ref на ObjectModal)
+  await getAddressFromCoords(pendingObjectCoords.value)
   showObjectModal.value = true
 }
 
-// Обработчик отправки объекта из модалки
 const handleObjectSubmit = async (payload) => {
-  console.log('📦 [ObjectModal] Сохранение объекта:', {
-    name: payload.name,
-    type: payload.type,
-    description: payload.description,
-    coords: payload.coords,
-    timestamp: new Date().toISOString()
-  })
-  
+  console.log('📦 [ObjectModal] Сохранение объекта:', payload)
   loading.value = true
-  
   try {
     await new Promise(resolve => setTimeout(resolve, 800))
-    
-    // Создаём временный объект для отображения на карте
     const newPlacemark = new window.ymaps.Placemark(
       payload.coords,
       { 
@@ -791,23 +747,12 @@ const handleObjectSubmit = async (payload) => {
         zIndex: 100
       }
     )
-    
-    // Добавляем на карту
-    if (clusterer) {
-      clusterer.add(newPlacemark)
-    } else if (map) {
-      map.geoObjects.add(newPlacemark)
-    }
-    
+    if (clusterer) clusterer.add(newPlacemark)
+    else if (map) map.geoObjects.add(newPlacemark)
     success.value = `Объект "${payload.name}" добавлен!`
     setTimeout(() => { success.value = null }, 2500)
-    
-    // 👇 ДОБАВЬ ЭТУ СТРОКУ:
-    showObjectModal.value = false  // Закрываем модалку!
-    
-    // Выходим из режима добавления
+    showObjectModal.value = false
     isAddingMode.value = false
-    
   } catch (err) {
     console.error('[ObjectSubmit] Ошибка:', err)
     error.value = 'Не удалось добавить объект. Попробуйте позже.'
@@ -816,15 +761,12 @@ const handleObjectSubmit = async (payload) => {
   }
 }
 
-// Обработчик отмены в модалке объекта
 const handleObjectCancel = () => {
-  console.log('[ObjectModal] Отменено')
   pendingObjectCoords.value = null
   isAddingMode.value = false
   showObjectModal.value = false
 }
 
-// Обработчик ошибок в модалке объекта
 const handleObjectError = ({ message }) => {
   error.value = message
   setTimeout(() => { error.value = null }, 3000)
@@ -832,7 +774,8 @@ const handleObjectError = ({ message }) => {
 
 // ===== LIFE CYCLE =====
 onMounted(async () => {
-    isAuthenticated.value = true // 👈 Заглушка: замените на реальную проверку
+    // 👇 Инициализируем из утилиты, а не хардкодом!
+    // isAuthenticated.value уже установлен выше через checkAuth()
     
     try {
         await initMap()

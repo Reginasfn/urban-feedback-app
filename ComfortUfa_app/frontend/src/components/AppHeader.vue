@@ -18,7 +18,8 @@ export default {
             ],
             isAuth: false,
             showLoginModal: false,
-            showRegisterModal: false
+            showRegisterModal: false,
+            currentUser: null
         }
     },
     computed: {
@@ -31,14 +32,69 @@ export default {
             }
         }
     },
+    mounted() {
+        // 👇 ПРОВЕРЯЕМ АВТОРИЗАЦИЮ ПРИ ЗАГРУЗКЕ
+        this.checkAuth()
+        
+        // 👇 Слушаем события изменения авторизации (для других компонентов)
+        window.addEventListener('auth-change', this.handleAuthChange)
+    },
+    
+    beforeUnmount() {
+        // 👇 Очищаем слушатель
+        window.removeEventListener('auth-change', this.handleAuthChange)
+    },
+
     methods: {
+        // 👇 Проверка авторизации при загрузке
+        checkAuth() {
+            const token = localStorage.getItem('auth_token')
+            const user = localStorage.getItem('user')
+            
+            if (token && user) {
+                this.isAuth = true
+                try {
+                    this.currentUser = JSON.parse(user)
+                } catch {
+                    this.currentUser = null
+                }
+                console.log('✅ Пользователь авторизован:', this.currentUser)
+            } else {
+                this.isAuth = false
+                this.currentUser = null
+                console.log('❌ Пользователь не авторизован')
+            }
+        },
+
+        // 👇 Обработчик события изменения авторизации (для синхронизации с другими компонентами)
+        handleAuthChange(event) {
+            const newAuthState = event.detail.isAuthenticated
+            
+            // Обновляем только если состояние реально изменилось
+            if (this.isAuth !== newAuthState) {
+                this.isAuth = newAuthState
+                
+                if (!newAuthState) {
+                    // При выходе очищаем данные
+                    this.currentUser = null
+                    if (this.$route.path !== '/' && this.$route.path !== '/map') {
+                        this.$router.push('/')
+                    }
+                }
+                // При входе currentUser уже установлен в handleLogin — не перезаписываем
+            }
+        },
+
         handleProfileClick() {
+            console.log('👤 handleProfileClick, isAuth:', this.isAuth)
+            
             if (!this.isAuth) {
                 this.showLoginModal = true
             } else {
                 this.$router.push('/profile')
             }
         },
+        
         handleFavoritesClick() {
             if (!this.isAuth) {
                 this.$toast.add({
@@ -52,27 +108,107 @@ export default {
                 this.$router.push('/favorites')
             }
         },
-        handleCloseModal() {},
+
+        // 👇 ОБНОВЛЁННЫЙ handleLogin — гарантированное обновление состояния
+        async handleLogin(credentials) {
+            console.log('🔑 handleLogin вызван с:', credentials)
+            
+            try {
+                // 🔐 Данные уже сохранены в LoginModal, берём из localStorage
+                const token = localStorage.getItem('auth_token')
+                const userData = localStorage.getItem('user')
+                
+                if (!token || !userData) {
+                    throw new Error('Токен или данные пользователя не сохранены')
+                }
+                
+                const user = JSON.parse(userData)
+                
+                // 👇 ПРЯМО обновляем локальное состояние
+                this.isAuth = true
+                this.currentUser = user
+                
+                // 👇 Ждём обновления Vue
+                await this.$nextTick()
+                
+                // 👇 Сообщаем другим компонентам
+                window.dispatchEvent(new CustomEvent('auth-change', { 
+                    detail: { isAuthenticated: true } 
+                }))
+                
+                this.showLoginModal = false
+
+                this.$router.push('/profile')
+                
+            } catch (error) {
+                console.error('Login error:', error)
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Ошибка входа',
+                    detail: error.message || 'Неверный email или пароль',
+                    life: 4000,
+                    styleClass: 'my-error-toast'
+                })
+            }
+        },
+
+        // 👇 ОБНОВЛЁННЫЙ handleLogout — тоже с $nextTick
+        handleLogout() {
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('user')
+            
+            // 👇 1. Сначала обновляем локальное состояние
+            this.isAuth = false
+            this.currentUser = null
+            
+            // 👇 2. Ждём обновления шаблона
+            this.$nextTick(() => {
+                // 👇 3. Потом сообщаем другим компонентам
+                window.dispatchEvent(new CustomEvent('auth-change', { 
+                    detail: { isAuthenticated: false } 
+                }))
+            })
+            
+            this.$toast.add({
+                severity: 'info',
+                summary: 'Выход',
+                detail: 'Вы вышли из системы',
+                life: 2000,
+                styleClass: 'my-info-toast'
+            })
+            
+            if (this.$route.path !== '/' && this.$route.path !== '/map') {
+                this.$router.push('/')
+            }
+        },
+
+        handleCloseModal() {
+            this.showLoginModal = false
+            this.showRegisterModal = false
+        },
+        
         handleRegisterClick() {
             this.showLoginModal = false
             this.$router.push('/register')
         },
+        
         handleSwitchToRegister() {
             this.showLoginModal = false
             setTimeout(() => {
                 this.showRegisterModal = true
             }, 180)
         },
+        
         handleSwitchToLogin() {
             this.showRegisterModal = false
             setTimeout(() => {
                 this.showLoginModal = true
             }, 180)
         },
+        
         handleRegister(credentials) {
             console.log('REGISTER:', credentials)
             this.showRegisterModal = false
-
             this.showLoginModal = true
         }
     }
@@ -85,10 +221,9 @@ export default {
         <div class="header-top">
             <div class="container">
                 
-                <!-- Логотип с картинкой -->
+                <!-- Логотип -->
                 <div class="logo" @click="$router.push('/')">
                     <img src="@/assets/icons/logoIcon.svg" alt="ComfortUfa" class="logo-img">
-                    
                     <div class="logo-text">
                         <span class="logo-title">Комфортная</span>
                         <span class="logo-subtitle">Уфа</span>
@@ -110,14 +245,26 @@ export default {
 
                 <!-- Иконки справа -->
                 <div class="header-icons">
+                    <!-- Кнопка "Избранное" — всегда видна -->
                     <button class="icon-btn" title="Избранное" @click="handleFavoritesClick">
                         <i class="pi pi-bookmark"></i>
                     </button>
-                    <button class="icon-btn" title="Профиль" @click="handleProfileClick">
+
+                    <!-- Кнопка "Профиль" — всегда видна, но разное поведение -->
+                    <button class="icon-btn" :title="isAuth ? 'Мой профиль' : 'Войти'" @click="handleProfileClick">
                         <i class="pi pi-user"></i>
                     </button>
-                </div>
 
+                    <!-- Кнопка "Выйти" — только если авторизован -->
+                    <button 
+                        v-if="isAuth" 
+                        class="icon-btn" 
+                        title="Выйти" 
+                        @click="handleLogout"
+                    >
+                        <i class="pi pi-sign-out"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -131,10 +278,10 @@ export default {
         </div>
     </header>
 
-    <!-- Уведомление -->
+    <!-- Уведомления -->
     <Toast/>
 
-    <!-- Используем компонент LoginModal -->
+    <!-- Модальные окна -->
     <LoginModal
         :visible="showLoginModal"
         @update:visible="showLoginModal = $event"

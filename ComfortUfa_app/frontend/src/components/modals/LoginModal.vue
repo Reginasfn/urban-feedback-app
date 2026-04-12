@@ -111,7 +111,7 @@ export default {
                     summary: 'Заполните поля',
                     detail: 'Введите email и пароль',
                     life: 3000,
-                    styleClass: 'my-big-toast'
+                    styleClass: 'my-error-toast'
                 })
                 return
             }
@@ -142,16 +142,14 @@ export default {
                     styleClass: 'my-success-toast'
                 })
 
-                // 📡 Сообщаем родителю об успехе
-                this.$emit('auth-success', {
-                    token: response.data.access_token,
-                    user: {
-                        id: response.data.user_id,
-                        nickname: response.data.nickname,
-                        role: response.data.role
-                    }
+                // 👇 ЭМИТИМ СОБЫТИЕ `login` (вместо auth-success!)
+                this.$emit('login', {
+                    email: this.localEmail,
+                    password: this.localPassword,
+                    response: response.data
                 })
 
+                // 📡 Обновляем статистику
                 window.dispatchEvent(new CustomEvent('stats-refresh'))
 
                 this.$emit('update:visible', false)
@@ -167,7 +165,7 @@ export default {
                     summary: 'Ошибка',
                     detail: message,
                     life: 4000,
-                    styleClass: 'my-error-toast'
+                    styleClass: 'my-big-toast'
                 })
             } finally {
                 this.internalLoading = false
