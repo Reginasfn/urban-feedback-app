@@ -3,18 +3,27 @@
     
     <!-- ===== ЛЕВЫЙ ПЛАВАЮЩИЙ САЙДБАР ===== -->
     <div class="sidebar">
-      <!-- Поиск по категориям -->
+      <!-- 🔍 Поиск по названию/адресу -->
       <div class="sidebar-section">
         <label class="sidebar-label">Поиск объектов</label>
         <AutoComplete 
           v-model="searchQuery" 
-          :suggestions="filteredCategories" 
+          :suggestions="searchResults" 
           @complete="searchCategories"
-          placeholder="Введите название..."
+          @item-select="onCategorySelect"
+          @keydown="handleSearchKeydown"
+          placeholder="Название или адрес..."
           class="w-full"
           :dropdown="true"
-          @item-select="onCategorySelect"
-        />
+          optionLabel="label"
+        >
+          <template #item="{ item }">
+            <div class="flex flex-col">
+              <span class="font-semibold text-sm">{{ item.label }}</span>
+              <span class="text-xs text-gray-500">{{ item.type }}</span>
+            </div>
+          </template>
+        </AutoComplete>
       </div>
 
       <!-- Топ-5 категорий -->
@@ -184,7 +193,7 @@ import ObjectModal from '@/components/modals/ObjectModal.vue'
 
 // 👇 ИМПОРТ С ПЕРЕИМЕНОВАНИЕМ, чтобы не было конфликта имён
 import { 
-  isAuthenticated as checkAuth,  // 👈 Функция проверки (переименовали)
+  isAuthenticated as checkAuth,
   getCurrentUser 
 } from '@/utils/auth'
 
@@ -201,8 +210,8 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const currentLayer = ref('map')
 
-// 👇 Аутентификация — теперь без конфликта имён!
-const isAuthenticated = ref(checkAuth())  // ✅ Вызываем функцию checkAuth()
+// 👇 Аутентификация
+const isAuthenticated = ref(checkAuth())
 
 // 👇 Слушаем изменения авторизации
 onMounted(() => {
@@ -212,7 +221,6 @@ onMounted(() => {
   
   window.addEventListener('auth-change', handleAuthChange)
   
-  // 👇 Очищаем слушатель при размонтировании
   onBeforeUnmount(() => {
     window.removeEventListener('auth-change', handleAuthChange)
   })
@@ -251,6 +259,9 @@ const objectTypeOptions = [
 let map = null
 let clusterer = null
 let userLocationPlacemark = null
+let activePlacemark = null
+let balloonTimeout = null
+let removeTimeout = null
 
 // ===== Константы =====
 const UFA_CENTER = [54.7388, 55.9721]
@@ -297,25 +308,195 @@ const categoryIcons = {
 
 const getCategoryIcon = (cat) => categoryIcons[cat] || 'pi pi-map-marker'
 
-// ===== Фильтрация для поиска =====
-const filteredCategories = computed(() => {
-    if (!searchQuery.value) return []
-    return categories.filter(cat => 
-        cat.toLowerCase().includes(searchQuery.value.toLowerCase())
-    )
-})
-
-const searchCategories = (event) => {
-    setTimeout(() => {
-        searchResults.value = categories.filter(cat => 
-            cat.toLowerCase().includes(event.query.toLowerCase())
-        )
-    }, 100)
+// 🔍 ===== ПОИСК: теперь делаем запрос к API =====
+const searchCategories = async (event) => {
+  const query = event.query.trim()
+  
+  // Если запрос короткий — не делаем запрос
+  if (query.length < 2) {
+    searchResults.value = []
+    return
+  }
+  
+  try {
+    // 👇 Запрос к бэкенду с параметром search
+    const response = await axios.get('http://localhost:8000/api/objects', {
+      params: { 
+        search: query, 
+        limit: 15  // показываем топ-15 результатов
+      }
+    })
+    
+    // 👇 Форматируем результаты для AutoComplete
+    searchResults.value = response.data.map(obj => ({
+      label: `${obj.name} — ${obj.address || 'Адрес не указан'}`,
+      ...obj, // 👈 ВСЕ ДАННЫЕ В ОДНОМ ОБЪЕКТЕ
+      type: obj.type_name
+    }))
+    
+  } catch (err) {
+    console.error('[Search] Ошибка:', err)
+    searchResults.value = []
+  }
 }
 
-const onCategorySelect = (event) => {
-    loadObjects(event.value)
+// ===== Плавное перемещение к объекту (унифицированная функция) =====
+const navigateToObject = async (obj) => {
+  if (!map || !obj.coords) {
+    console.error('[Navigate] Карта или координаты не найдены')
+    error.value = 'Не удалось перейти к объекту'
+    setTimeout(() => { error.value = null }, 3000)
+    return
+  }
+  
+  console.log('[Navigate] Переход к объекту:', obj)
+  
+  // 👇 Очищаем предыдущую метку и таймеры
+  clearTimeout(balloonTimeout)
+  clearTimeout(removeTimeout)
+
+  if (activePlacemark && map.geoObjects) {
+    map.geoObjects.remove(activePlacemark)
+    activePlacemark = null
+  }
+  
+  try {
+    // Плавное перемещение камеры карты с анимацией
+    await map.panTo(obj.coords, {
+      flying: true,
+      duration: 1200
+    })
+    
+    // Устанавливаем зум после перемещения
+    await map.setZoom(16, { duration: 400 })
+    
+    // 👇 Создаем и добавляем метку с ПОЛНЫМИ данными
+    const placemark = new window.ymaps.Placemark(
+      obj.coords,
+      { 
+        balloonContent: createBalloonContent({
+          id_object: obj.id_object,
+          name: obj.name,
+          address: obj.address,
+          type_name: obj.type_name
+        }, 0, obj.type_name),
+        hintContent: obj.name || 'Объект'
+      },
+      { 
+        preset: markerConfig[obj.type_name]?.preset || 'islands#grayCircleIcon',
+        isOurObject: true,
+        zIndex: 1000,
+        balloonCloseButton: true,
+        balloonMaxWidth: 350,
+        balloonMinWidth: 280
+      }
+    )
+    
+    // Сохраняем ссылку на активную метку
+    activePlacemark = placemark
+    
+    // Добавляем метку на карту
+    map.geoObjects.add(placemark)
+    
+    // 👇 Добавляем обработчик закрытия балуна - удаляем метку с карты
+    placemark.events.add('balloonclose', () => {
+      if (map.geoObjects && activePlacemark === placemark) {
+        map.geoObjects.remove(placemark)
+        activePlacemark = null
+      }
+    })
+    
+    // Открываем балун с небольшой задержкой
+    balloonTimeout = setTimeout(() => {
+      if (placemark.balloon) {
+        placemark.balloon.open()
+      }
+    }, 300)
+    
+    success.value = `Найден: ${obj.name || 'Объект'}`
+    setTimeout(() => { success.value = null }, 2500)
+    
+  } catch (err) {
+    console.error('[Navigate] Ошибка:', err)
+    error.value = 'Ошибка при переходе к объекту'
+    setTimeout(() => { error.value = null }, 3000)
+  }
+}
+
+// ===== КАРТОЧКА ОБЪЕКТА В БАЛУНЕ =====
+const createBalloonContent = (obj, index, type) => {
+  console.log('[Balloon] Полученные данные:', obj) // 👈 Лог для отладки
+  
+  const isBookmarked = bookmarkedObjects.value.has(obj.id_object)
+  const displayName = obj.name || `Объект #${obj.id_object || (index + 1)}`
+  const displayAddress = obj.address || 'Адрес не указан'
+  const displayType = obj.type_name || type || 'Не указан'
+  
+  console.log('[Balloon] Отображение:', { displayName, displayAddress, displayType })
+  
+  return `
+    <div class="object-card">
+      <button class="bookmark-btn ${isBookmarked ? 'active' : ''}" 
+              onclick="window.__toggleBookmark?.('${obj.id_object}', this)"
+              title="${isBookmarked ? 'Убрать из избранного' : 'Добавить в избранное'}">
+        <i class="pi ${isBookmarked ? 'pi-bookmark-fill' : 'pi-bookmark'}"></i>
+      </button>
+      <div class="object-card-header">
+        <i class="pi ${getCategoryIcon(displayType)}"></i>
+        <h4>${displayName}</h4>
+      </div>
+      <p class="object-address"><i class="pi pi-map-marker"></i> ${displayAddress}</p>
+      <div class="object-card-footer">
+        <span class="object-type">${displayType}</span>
+        <button class="review-btn" onclick="window.__openReview?.('${obj.id_object}', '${displayName.replace(/'/g, "\\'")}', '${displayType}')">
+          <i class="pi pi-pencil"></i> Добавить отзыв
+        </button>
+      </div>
+    </div>
+    <style>
+      .object-card { font-family: Inter, system-ui, sans-serif; min-width: 280px; background: linear-gradient(135deg, #fff 0%, #f8fafc 100%); border-radius: 16px; padding: 16px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid rgba(22,143,4,0.15); position: relative; }
+      .bookmark-btn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border: none; background: rgba(22,143,4,0.1); color: #168f04; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; z-index: 10; }
+      .bookmark-btn:hover { background: rgba(22,143,4,0.2); transform: scale(1.1); }
+      .bookmark-btn.active { background: #168f04; color: white; }
+      .object-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(22,143,4,0.1); }
+      .object-card-header i { font-size: 20px; color: #168f04; background: rgba(22,143,4,0.1); padding: 8px; border-radius: 10px; }
+      .object-card-header h4 { margin: 0; font-size: 16px; font-weight: 700; color: #1a1a1a; }
+      .object-address { margin: 0 0 16px 0; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+      .object-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .object-type { font-size: 11px; font-weight: 600; color: #168f04; background: rgba(22,143,4,0.1); padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
+      .review-btn { display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #168f04 0%, #007306 100%); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 14px rgba(22,143,4,0.3); }
+      .review-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22,143,4,0.45); }
+    </style>
+  `
+}
+
+// 👇 Обработка нажатия Enter в поле поиска
+const handleSearchKeydown = (event) => {
+  if (event.key === 'Enter' && searchResults.value.length > 0) {
+    const firstResult = searchResults.value[0]
+
+    if (firstResult?.id_object) {
+      event.preventDefault()
+      navigateToObject(firstResult)
+      searchQuery.value = ''
+      searchResults.value = []
+    }
+  }
+}
+
+// 👇 При выборе результата из поиска (клик мышью или выбор из списка)
+// 👈 ИСПРАВЛЕНИЕ: используем правильный доступ к выбранному элементу
+const onCategorySelect = async (event) => {
+  const selected = event.value
+
+  console.log('[Select] Выбран элемент:', selected)
+
+  if (selected && selected.id_object) {
+    await navigateToObject(selected)
     searchQuery.value = ''
+    searchResults.value = []
+    return
+  }
 }
 
 // ===== Блокировка стандартных объектов Яндекса =====
@@ -405,7 +586,6 @@ const createMapInstance = () => {
                 map.options.set('suppressMapOpenBlock', true)
                 map.behaviors.disable('dblClickZoom')
                 
-                // Обработчик клика по карте для добавления объектов
                 map.events.add('click', (e) => {
                     if (isAddingMode.value) {
                         handleMapClick(e)
@@ -550,45 +730,6 @@ const loadObjects = async (type) => {
     } catch (err) {
         error.value = err.response?.data?.detail || `Ошибка: ${err.message}`
     } finally { loading.value = false }
-}
-
-// ===== КАРТОЧКА ОБЪЕКТА В БАЛУНЕ =====
-const createBalloonContent = (obj, index, type) => {
-    const isBookmarked = bookmarkedObjects.value.has(obj.id_object)
-    return `
-        <div class="object-card">
-            <button class="bookmark-btn ${isBookmarked ? 'active' : ''}" 
-                    onclick="window.__toggleBookmark?.('${obj.id_object}', this)"
-                    title="${isBookmarked ? 'Убрать из избранного' : 'Добавить в избранное'}">
-                <i class="pi ${isBookmarked ? 'pi-bookmark-fill' : 'pi-bookmark'}"></i>
-            </button>
-            <div class="object-card-header">
-                <i class="pi ${getCategoryIcon(type)}"></i>
-                <h4>${obj.name || 'Объект #' + (index + 1)}</h4>
-            </div>
-            <p class="object-address"><i class="pi pi-map-marker"></i> ${obj.address || 'Адрес не указан'}</p>
-            <div class="object-card-footer">
-                <span class="object-type">${type}</span>
-                <button class="review-btn" onclick="window.__openReview?.('${obj.id_object}', '${obj.name || 'Объект'}', '${type}')">
-                    <i class="pi pi-pencil"></i> Добавить отзыв
-                </button>
-            </div>
-        </div>
-        <style>
-            .object-card { font-family: Inter, system-ui, sans-serif; min-width: 280px; background: linear-gradient(135deg, #fff 0%, #f8fafc 100%); border-radius: 16px; padding: 16px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid rgba(22,143,4,0.15); position: relative; }
-            .bookmark-btn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border: none; background: rgba(22,143,4,0.1); color: #168f04; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; z-index: 10; }
-            .bookmark-btn:hover { background: rgba(22,143,4,0.2); transform: scale(1.1); }
-            .bookmark-btn.active { background: #168f04; color: white; }
-            .object-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(22,143,4,0.1); }
-            .object-card-header i { font-size: 20px; color: #168f04; background: rgba(22,143,4,0.1); padding: 8px; border-radius: 10px; }
-            .object-card-header h4 { margin: 0; font-size: 16px; font-weight: 700; color: #1a1a1a; }
-            .object-address { margin: 0 0 16px 0; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
-            .object-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-            .object-type { font-size: 11px; font-weight: 600; color: #168f04; background: rgba(22,143,4,0.1); padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
-            .review-btn { display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #168f04 0%, #007306 100%); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 14px rgba(22,143,4,0.3); }
-            .review-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22,143,4,0.45); }
-        </style>
-    `
 }
 
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ =====
@@ -774,9 +915,6 @@ const handleObjectError = ({ message }) => {
 
 // ===== LIFE CYCLE =====
 onMounted(async () => {
-    // 👇 Инициализируем из утилиты, а не хардкодом!
-    // isAuthenticated.value уже установлен выше через checkAuth()
-    
     try {
         await initMap()
         if (categories.length > 0) await loadObjects(categories[0])
@@ -786,6 +924,12 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+    if (activePlacemark && map?.geoObjects) {
+        map.geoObjects.remove(activePlacemark)
+        activePlacemark = null
+    }
+    clearTimeout(balloonTimeout)
+    clearTimeout(removeTimeout)
     if (map) { map.destroy(); map = null; clusterer = null; userLocationPlacemark = null }
     delete window.__toggleBookmark
     delete window.__openReview

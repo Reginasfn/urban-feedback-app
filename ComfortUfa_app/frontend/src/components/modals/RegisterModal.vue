@@ -3,7 +3,7 @@
         :visible="visible"
         @update:visible="$emit('update:visible', $event)"
         modal
-        header="Создать аккаунт ComfortUfa"
+        header="Регистрация в ComfortUfa"
         :style="{ width: '450px' }"
         :draggable="false"
         :closable="true"
@@ -110,14 +110,13 @@
                         inputClass="w-full"
                         :class="{ 'p-invalid': submitted && password !== confirmPassword }"
                     />
-                    <label for="confirm-password">Повторите пароль *</label>
                 </IftaLabel>
                 <small v-if="submitted && password !== confirmPassword" class="p-error">Пароли не совпадают</small>
             </div>
 
             <Button
                 type="submit"
-                label="Создать профиль"
+                label="Зарегистрироваться"
                 icon="pi pi-user-plus"
                 class="btn-register"
                 :loading="loading"

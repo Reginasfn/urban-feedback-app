@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.database import engine, Base, get_db  # 👈 Импортируем Base и engine
-from api.endpoints import objects, stats, auth, users
+from api.endpoints import objects, stats, auth, users, reviews
 
 app = FastAPI(
     title="ComfortUfa API",

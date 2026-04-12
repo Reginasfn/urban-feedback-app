@@ -1,5 +1,3 @@
-# objects.py
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -14,29 +12,38 @@ router = APIRouter(prefix="/api", tags=["Объекты"])
 @router.get("/objects", response_model=List[ObjectWithTypeName])
 async def get_objects(
     type: Optional[str] = Query(None, description="Тип объекта: Фонарь, Скамейка и т.д."),
+    search: Optional[str] = Query(None, description="Поиск по названию или адресу"),
     limit: int = Query(1000, ge=1, le=5000),
     db: Session = Depends(get_db)
 ):
-    """Получение объектов для карты с фильтрацией по типу"""
+    """Получение объектов для карты с фильтрацией и поиском"""
     try:
-        query = text("""
+        # 👇 Динамически строим WHERE-условия
+        where_conditions = ["o.id_status = 2"]  # только одобренные
+        params = {"limit": limit}
+        
+        if type:
+            where_conditions.append("t.name_type = :type")
+            params["type"] = type
+            
+        if search:
+            where_conditions.append("(o.name ILIKE :q OR o.address ILIKE :q)")
+            params["q"] = f"%{search}%"
+        
+        query_text = f"""
             SELECT 
-                o.id_object,
-                o.name,
-                t.name_type as type_name,
-                o.address,
-                ST_Y(o.location::geometry) as lat,
-                ST_X(o.location::geometry) as lon,
-                o.id_status,
-                o.created_at
+                o.id_object, o.name, t.name_type as type_name, o.address,
+                ST_Y(o.location::geometry) as lat, ST_X(o.location::geometry) as lon,
+                o.id_status, o.created_at
             FROM public.objects o
             LEFT JOIN public.type_object t ON o.id_type = t.id_type
-            WHERE (:type IS NULL OR t.name_type = :type)
+            WHERE {" AND ".join(where_conditions)}
             ORDER BY o.created_at DESC
             LIMIT :limit
-        """)
+        """
         
-        result = db.execute(query, {"type": type, "limit": limit})
+        query = text(query_text)
+        result = db.execute(query, params)
         rows = result.fetchall()
         
         objects = [

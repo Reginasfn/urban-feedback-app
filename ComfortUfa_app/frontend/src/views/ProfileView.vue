@@ -4,7 +4,7 @@
     <!-- Заголовок страницы -->
     <div class="profile-header">
       <div class="container">
-        <h1 class="page-title">👨‍💼 Личный кабинет</h1>
+        <h1 class="page-title">Личный профиль</h1>
         <p class="page-subtitle">Управляйте своими данными и настройками</p>
       </div>
     </div>
@@ -51,7 +51,7 @@
               </div>
               
               <Button 
-                label="✏️ Редактировать" 
+                label="Редактировать" 
                 @click="startEditing" 
                 class="btn-edit"
                 severity="secondary"
@@ -116,6 +116,9 @@
                   id="new_password"
                   v-model="form.new_password"
                   toggleMask
+                  weakLabel="Слабый"
+                  mediumLabel="Средний"
+                  strongLabel="Сильный"
                   placeholder="Минимум 6 символов"
                 />
                 <small class="hint-text">Оставьте пустым, если не меняете пароль</small>
@@ -123,13 +126,13 @@
               
               <div class="edit-actions">
                 <Button 
-                  label="💾 Сохранить" 
+                  label="Сохранить" 
                   @click="saveProfile" 
                   :loading="saving"
                   class="btn-save"
                 />
                 <Button 
-                  label="✕ Отмена" 
+                  label="Отмена" 
                   @click="cancelEditing" 
                   severity="secondary"
                   class="btn-cancel"
@@ -182,7 +185,7 @@
             </template>
             <template #content>
               <Button 
-                label="🚪 Выйти из аккаунта" 
+                label="Выйти из аккаунта" 
                 @click="handleLogout" 
                 severity="danger" 
                 class="btn-logout"
@@ -339,8 +342,13 @@ export default {
       
       if (!this.form.nickname?.trim()) {
         this.errors.nickname = 'Введите никнейм'
-      } else if (this.form.nickname.length < 3) {
+      } 
+      else if (this.form.nickname.length < 3) {
         this.errors.nickname = 'Минимум 3 символа'
+      } 
+      // 👇 НОВАЯ ПРОВЕРКА: только буквы (кириллица/латиница) и цифры
+      else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
+        this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
       }
       
       if (!this.form.email?.trim()) {
