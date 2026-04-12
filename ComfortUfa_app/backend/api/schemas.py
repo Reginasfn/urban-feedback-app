@@ -1,3 +1,5 @@
+# schemas.py
+
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
@@ -69,3 +71,22 @@ class ObjectWithTypeName(BaseModel):
     
     class Config:
         from_attributes = True
+
+# ===== НОВАЯ СХЕМА ДЛЯ СТАТИСТИКИ =====
+class PlatformStats(BaseModel):
+    """
+    Схема ответа для статистики платформы.
+    Содержит основные метрики для главной страницы.
+    """
+    total_objects: int = Field(..., description="Общее количество объектов на карте")
+    total_problems: int = Field(..., description="Количество отзывов с категорией 'Проблема'")
+    total_users: int = Field(..., description="Общее количество зарегистрированных пользователей")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_objects": 1234,
+                "total_problems": 856,
+                "total_users": 3421
+            }
+        }

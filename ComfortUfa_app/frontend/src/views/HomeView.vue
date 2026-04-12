@@ -12,13 +12,13 @@
             <span class="highlight">комфортнее!</span>
           </h1>
           <h2 class="hero-subtitle">
-            Система предназначена для оценки <br> благоустройства города.<br>
-            Сообщайте о проблемах и улучшайте свою жизнь!
+            Система для улучшения <br> городской среды.<br>
+            Сообщайте о проблемах, вносите предложения, выражайте благодарность!
           </h2>
           
           <div class="hero-actions">
             <router-link to="/map" class="btn btn-large btn-primary">
-              Сообщить о проблеме
+              Оценить объект
             </router-link>
           </div>
 
@@ -33,18 +33,34 @@
 
       <!-- Статистика портала (снизу на всю ширину) -->
       <div class="hero-stats">
+
         <div class="stat-card">
-          <div class="stat-number">{{ stats.marks.toLocaleString() }}</div>
-          <div class="stat-label">Количество объектов</div>
+          <div class="stat-number">
+            <span v-if="loadingStats" class="loading">...</span>
+            <span v-else>{{ stats.marks.toLocaleString() }}</span>
+          </div>
+
+          <div class="stat-label">Объектов на карте</div>
         </div>
+
         <div class="stat-card">
-          <div class="stat-number">{{ stats.solved.toLocaleString() }}</div>
-          <div class="stat-label">Имеющихся <br> проблем в городе</div>
+          <div class="stat-number">
+            <span v-if="loadingStats" class="loading">...</span>
+            <span v-else>{{ stats.solved.toLocaleString() }}</span>
+          </div>
+
+          <div class="stat-label">Выявлено проблем</div>
         </div>
+
         <div class="stat-card">
-          <div class="stat-number">{{ stats.users.toLocaleString() }}</div>
-          <div class="stat-label">Зарегистрировано <br> пользователей</div>
+          <div class="stat-number">
+            <span v-if="loadingStats" class="loading">...</span>
+            <span v-else>{{ stats.users.toLocaleString() }}</span>
+          </div>
+
+          <div class="stat-label">Пользователей присоединилось</div>
         </div>
+
       </div>
     </section>
 
@@ -111,14 +127,54 @@
 </template>
 
 <script>
+import axios from 'axios'
+
 export default {
   name: 'HomeView',
   data() {
     return {
       stats: {
-        marks: 1234,
-        solved: 856,
-        users: 3421
+        marks: 0, //колво объектов
+        solved: 0, //колво проблем
+        users: 0 //колво пользователей
+      },
+      loadingStats: true,
+      statsError: null
+    }
+  }, 
+
+  async mounted() {
+    await this.fetchStats()
+  },
+
+  methods:{
+    async fetchStats(){
+      try{
+        this.loadingStats = true
+        this.statsError = null
+
+        const response = await axios.get('http://localhost:8000/api/stats')
+        // 👇 Обновляем статистику реальными данными
+        this.stats = {
+          marks: response.data.total_objects,    // Объекты
+          solved: response.data.total_problems,  // Проблемы
+          users: response.data.total_users       // Пользователи
+        }
+        
+        console.log('✅ Статистика загружена:', this.stats)
+      }
+      catch (error) {
+        console.error('❌ Ошибка загрузки статистики:', error)
+        this.statsError = 'Не удалось загрузить статистику'
+        
+        this.stats = {
+          marks: 100,
+          solved: 100,
+          users: 100
+        } 
+      }
+      finally {
+        this.loadingStats = false
       }
     }
   }
@@ -127,6 +183,17 @@ export default {
 
 <style scoped>
 /* ===================== ОБЩИЕ СТИЛИ ===================== */
+.loading {
+  display: inline-block;
+  width: 40px;
+  text-align: center;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
 .home {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #1a1a1a;
@@ -166,6 +233,7 @@ export default {
 .btn-large {
   padding: 20px 30px;
   font-size: 18px;
+  font-weight: 700;
 }
 
 /* ===================== ГЕРОЙ-СЕКЦИЯ ===================== */
@@ -256,9 +324,9 @@ export default {
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(70px);
-  padding: 20px;
+  padding: 30px 20px;
   border-radius: 16px;
   border: 1px solid rgba(2, 142, 0, 0.2);
   text-align: center;
@@ -266,8 +334,13 @@ export default {
 }
 
 .stat-number {
-  font-size: 42px;
+  font-size: 27px;
   font-weight: 800;
+}
+
+.stat-label{
+  font-family: monospace;
+  font-size: 20px;
 }
 
 

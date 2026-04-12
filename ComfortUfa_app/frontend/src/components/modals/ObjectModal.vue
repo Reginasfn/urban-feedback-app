@@ -161,7 +161,7 @@ const validate = () => {
   
   const name = formData.value.name?.trim()
 
-  if (name) {
+  if (!name) {
     errors.value.name = 'Введите корректное название'
   } 
   
