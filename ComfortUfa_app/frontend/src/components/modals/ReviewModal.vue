@@ -11,6 +11,7 @@
       footer: { class: 'bg-white border-t border-gray-200' }
     }"
     @hide="onCancel"
+    style="font-family: monospace;"
   >
     <div class="review-form">
       <!-- Информация об объекте -->
@@ -50,7 +51,7 @@
             class="star-btn"
             :class="{ filled: star <= reviewForm.rating }"
             type="button"
-            aria-label={`Рейтинг ${star} из 5`}
+            :aria-label="'Рейтинг ' + star + ' из 5'"
           >
             <i :class="star <= reviewForm.rating ? 'pi pi-star-fill' : 'pi pi-star'"></i>
           </button>
@@ -334,7 +335,7 @@ defineExpose({
 
 <style scoped>
 /* === ФОРМА ОТЗЫВА === */
-.review-form { display: flex; flex-direction: column; gap: 20px; padding: 8px 4px; }
+.review-form {font-family: monospace; display: flex; flex-direction: column; gap: 15px; padding: 8px 4px; }
 
 /* Информация об объекте */
 .object-info {
@@ -356,11 +357,12 @@ defineExpose({
 }
 .object-info strong {
   display: block;
-  font-size: 14px;
+  font-size: 15px;
   color: #1a1a1a;
+  padding: 2px 8px;
 }
 .object-type {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #168f04;
   background: rgba(22, 143, 4, 0.1);
@@ -370,20 +372,19 @@ defineExpose({
 }
 
 /* Группы полей */
-.form-group { display: flex; flex-direction: column; gap: 8px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
 .form-label { 
-  font-size: 13px; 
+  font-size: 16px; 
   font-weight: 600; 
   color: #334155;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 .text-hint {
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: 12px;
+  color: #858a93;
   text-align: right;
-  margin-top: -4px;
+  margin-top: -5px;
 }
 
 /* Категории отзывов */
@@ -396,11 +397,11 @@ defineExpose({
   background: #f1f5f9; 
   border: 2px solid #e2e8f0; 
   border-radius: 20px; 
-  font-size: 12px; 
+  font-size: 15px; 
   font-weight: 500; 
   color: #475569; 
   cursor: pointer; 
-  transition: all 0.3s;
+  transition: all 0.5s;
 }
 .category-chip:hover { 
   border-color: #168f04; 
@@ -424,7 +425,7 @@ defineExpose({
   color: #cbd5e1; 
   font-size: 20px; 
   cursor: pointer; 
-  transition: all 0.2s;
+  transition: all 0.5s;
 }
 .star-btn:hover, .star-btn.filled { 
   color: #fbbf24; 
@@ -432,7 +433,7 @@ defineExpose({
 }
 .rating-value { 
   margin-left: 8px; 
-  font-size: 13px; 
+  font-size: 15px; 
   font-weight: 600; 
   color: #64748b; 
 }
@@ -470,7 +471,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   font-size: 14px;
-  transition: all 0.2s;
+  transition: all 0.5s;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   z-index: 2;
 }
@@ -486,13 +487,13 @@ defineExpose({
   padding: 6px 8px;
   background: rgba(0,0,0,0.6);
   color: white;
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .upload-hint {
-  font-size: 11px;
+  font-size: 14px;
   color: #64748b;
   display: flex;
   align-items: center;
@@ -525,8 +526,8 @@ defineExpose({
 :deep(.p-textarea) { 
   border-radius: 12px; 
   border: 2px solid #e2e8f0; 
-  transition: border-color 0.3s; 
-  font-size: 13px;
+  transition: border-color 0.5s; 
+  font-size: 15px;
 }
 :deep(.p-textarea:focus) { 
   border-color: #168f04; 
@@ -535,7 +536,7 @@ defineExpose({
 :deep(.p-button) { 
   border-radius: 10px; 
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   padding: 0.625rem 1.25rem;
 }
 :deep(.p-button:not(.p-button-secondary)) { 
@@ -548,11 +549,5 @@ defineExpose({
 :deep(.p-button:disabled) { 
   opacity: 0.7; 
   cursor: not-allowed; 
-}
-
-/* === АДАПТИВНОСТЬ === */
-@media (max-width: 520px) {
-  .review-categories { flex-wrap: wrap; }
-  .category-chip { flex: 1 1 auto; justify-content: center; }
 }
 </style>

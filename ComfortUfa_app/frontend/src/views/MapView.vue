@@ -19,7 +19,7 @@
 
       <!-- Топ-5 категорий -->
       <div class="sidebar-section">
-        <label class="sidebar-label">Топ-3 категории</label>
+        <label class="sidebar-label">Топ-5 объектов</label>
         <div class="top-categories">
           <button 
             v-for="(cat, idx) in topCategories" 
@@ -36,7 +36,7 @@
 
       <!-- Все категории -->
       <div class="sidebar-section">
-        <label class="sidebar-label">Все категории</label>
+        <label class="sidebar-label">Все типы объектов</label>
         <div class="categories-list">
           <button 
             v-for="cat in categories" 
@@ -61,7 +61,7 @@
       </div>
     </Transition>
 
-    <!-- ===== ПРАВАЯ ПАНЕЛЬ: Слои + Геолокация ===== -->
+    <!-- ===== ПРАВАЯ ПАНЕЛЬ: Слои + Геолокация + ДОБАВИТЬ ОБЪЕКТ ===== -->
     <div class="map-controls-right">
       <!-- Переключатель слоёв -->
       <div class="layer-switcher">
@@ -86,7 +86,42 @@
       >
         <i class="pi pi-send"></i>
       </button>
+
+      <!-- 👇 КНОПКА ДОБАВЛЕНИЯ ОБЪЕКТА (только для авторизованных) -->
+      <button 
+        v-if="isAuthenticated"
+        class="add-object-btn" 
+        :class="{ active: isAddingMode }"
+        @click="toggleAddMode"
+        :disabled="loading"
+        title="Добавить объект на карту"
+      >
+        <i class="pi" :class="isAddingMode ? 'pi-times' : 'pi-plus'"></i>
+      </button>
     </div>
+
+    <!-- 👇 ПОДСКАЗКА ПРИ ДОБАВЛЕНИИ -->
+    <Transition name="fade-slide">
+      <div v-if="isAddingMode" class="add-mode-hint">
+        <i class="pi pi-map-marker"></i>
+        <span>Нажмите на карту, чтобы добавить объект</span>
+        <button class="hint-close" @click="toggleAddMode"><i class="pi pi-times"></i></button>
+      </div>
+    </Transition>
+
+    <!-- 👇 ПОДТВЕРЖДЕНИЕ ДОБАВЛЕНИЯ (маленькое всплывающее окно) -->
+    <Transition name="fade-slide">
+      <div v-if="showAddConfirm" class="add-confirm-popup" :style="confirmPosition">
+        <div class="confirm-content">
+          <i class="pi pi-question-circle"></i>
+          <span>Добавить объект сюда?</span>
+          <div class="confirm-actions">
+            <button class="confirm-btn cancel" @click="cancelAddObject">Нет</button>
+            <button class="confirm-btn confirm" @click="confirmAddObject">Да</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Индикатор загрузки -->
     <Transition name="fade">
@@ -113,28 +148,39 @@
       </div>
     </Transition>
 
-    <!-- ===== МОДАЛЬНОЕ ОКНО ОТЗЫВА (PrimeVue Dialog) ===== -->
-        <ReviewModal
-            v-model:visible="showReviewModal"
-            :selected-object="selectedObjectForReview"
-            :review-categories="reviewCategories"
-            :category-icons="categoryIcons"
-            @submit="handleReviewSubmit"
-            @cancel="handleReviewCancel"
-            @error="handleReviewError"
-        />
+    <!-- ===== МОДАЛЬНОЕ ОКНО ОТЗЫВА ===== -->
+    <ReviewModal
+      v-model:visible="showReviewModal"
+      :selected-object="selectedObjectForReview"
+      :review-categories="reviewCategories"
+      :category-icons="categoryIcons"
+      @submit="handleReviewSubmit"
+      @cancel="handleReviewCancel"
+      @error="handleReviewError"
+    />
+
+    <!-- 👇 МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ ОБЪЕКТА -->
+    <ObjectModal
+      v-model:visible="showObjectModal"
+      :coordinates="pendingObjectCoords"
+      :available-types="objectTypeOptions"
+      @submit="handleObjectSubmit"
+      @cancel="handleObjectCancel"
+      @error="handleObjectError"
+    />
 
     <!-- ===== КАРТА ===== -->
-    <div ref="mapContainer" class="map-container" @click="blockDefaultObjects"></div>
+    <div ref="mapContainer" class="map-container"></div>
 
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import axios from 'axios'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
+import ObjectModal from '@/components/modals/ObjectModal.vue'
 
 // ===== Состояние =====
 const mapContainer = ref(null)
@@ -155,11 +201,30 @@ const bookmarkedObjects = ref(new Set())
 const showReviewModal = ref(false)
 const selectedObjectForReview = ref(null)
 
-// Категории отзывов (можно передать как prop, или оставить здесь)
+// 👇 ДОБАВЛЕНИЕ ОБЪЕКТОВ
+const isAddingMode = ref(false)
+const showAddConfirm = ref(false)
+const showObjectModal = ref(false)
+const pendingObjectCoords = ref(null) // [lat, lon] для подтверждения
+const confirmPosition = ref({ top: '0px', left: '0px' }) // позиция попапа подтверждения
+
+// Категории отзывов
 const reviewCategories = [
   { value: 'praise', label: 'Похвала', icon: 'pi pi-thumbs-up' },
   { value: 'suggestion', label: 'Предложение', icon: 'pi pi-lightbulb' },
   { value: 'problem', label: 'Проблема', icon: 'pi pi-exclamation-circle' }
+]
+
+// Типы объектов для добавления
+const objectTypeOptions = [
+  { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
+  { label: 'Кафе', value: 'Кафе' },
+  { label: 'Фонарь', value: 'Фонарь' },
+  { label: 'Скамейка', value: 'Скамейка' },
+  { label: 'Парк', value: 'Парк' },
+  { label: 'Беседка', value: 'Беседка' },
+  { label: 'Остановка', value: 'Остановка' },
+  { label: 'Детская площадка', value: 'Детская площадка' }
 ]
 
 let map = null
@@ -319,6 +384,15 @@ const createMapInstance = () => {
                 map.options.set('suppressMapOpenBlock', true)
                 map.behaviors.disable('dblClickZoom')
                 
+                // 👇 ДОБАВЬТЕ ЭТОТ БЛОК:
+                // Обработчик клика по карте для добавления объектов
+                map.events.add('click', (e) => {
+                    // Если в режиме добавления - вызываем наш обработчик
+                    if (isAddingMode.value) {
+                        handleMapClick(e)
+                    }
+                })
+                
                 map.events.add('balloonopen', (e) => {
                     const target = e.get('target')
                     if (!target?.options?.get('isOurObject')) {
@@ -330,6 +404,9 @@ const createMapInstance = () => {
                 
                 map.events.add('click', (e) => {
                     const target = e.get('target')
+                    // Если в режиме добавления - обрабатываем клик отдельно
+                    if (isAddingMode.value) return
+                    
                     if (!target?.options?.get('isOurObject') && target !== clusterer) {
                         e.stopPropagation()
                         return false
@@ -524,15 +601,14 @@ window.__toggleBookmark = (objectId, btnElement) => {
     setTimeout(() => { success.value = null }, 2000)
 }
 
-// ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: теперь только открывает модалку
 window.__openReview = (objectId, objectName, objectType) => {
     if (!isAuthenticated.value) {
-        error.value = '🔐 Пожалуйста, авторизуйтесь, чтобы оставить отзыв'
+        error.value = 'Необходимо авторизоваться, чтобы оставить отзыв'
         setTimeout(() => { error.value = null }, 3000)
         return
     }
     selectedObjectForReview.value = { id: objectId, name: objectName, type: objectType }
-    showReviewModal.value = true // форма сбросится внутри ReviewModal автоматически
+    showReviewModal.value = true
 }
 
 // ===== ОБРАБОТЧИКИ ДЛЯ REVIEWMODAL =====
@@ -540,23 +616,12 @@ const handleReviewSubmit = async ({ formData }) => {
   loading.value = true
   
   try {
-    // 👇 РЕАЛЬНЫЙ ЗАПРОС К БЭКЕНДУ (раскомментируйте когда готово)
-    // const response = await axios.post('/api/reviews', formData, {
-    //     headers: { 
-    //         'Content-Type': 'multipart/form-data',
-    //         'Authorization': `Bearer ${yourToken}`
-    //     }
-    // })
-    
-    // 👇 ИМИТАЦИЯ для теста
     await new Promise(resolve => setTimeout(resolve, 1200))
-    
-    success.value = '✅ Отзыв успешно отправлен!'
-    showReviewModal.value = false // закрываем модалку
+    success.value = 'Отзыв успешно отправлен!'
+    showReviewModal.value = false
     setTimeout(() => { success.value = null }, 2500)
-    
   } catch (err) {
-    console.error('[ReviewSubmit] ❌ Ошибка:', err)
+    console.error('[ReviewSubmit] Ошибка:', err)
     error.value = 'Не удалось отправить отзыв. Попробуйте позже.'
   } finally {
     loading.value = false
@@ -565,10 +630,202 @@ const handleReviewSubmit = async ({ formData }) => {
 
 const handleReviewCancel = () => {
   console.log('[ReviewModal] Отменено')
-  // Дополнительная логика при необходимости
 }
 
 const handleReviewError = ({ message }) => {
+  error.value = message
+  setTimeout(() => { error.value = null }, 3000)
+}
+
+// ===== 3. WATCHERS (отслеживание изменений) ===== 👈 СЮДА
+watch(isAddingMode, (newValue) => {
+  if (!map) return
+  
+  if (newValue) {
+    map.behaviors.disable('drag')
+    map.behaviors.disable('scrollZoom')
+    if (mapContainer.value) {
+      mapContainer.value.style.cursor = 'crosshair'
+    }
+  } else {
+    map.behaviors.enable('drag')
+    map.behaviors.enable('scrollZoom')
+    if (mapContainer.value) {
+      mapContainer.value.style.cursor = 'grab'
+    }
+  }
+})
+
+// ===== 🔽 НОВЫЕ ФУНКЦИИ ДЛЯ ДОБАВЛЕНИЯ ОБЪЕКТОВ 🔽 =====
+
+// Включение/выключение режима добавления
+const toggleAddMode = () => {
+  if (!isAuthenticated.value) {
+    error.value = 'Необходимо авторизоваться, чтобы добавлять объекты'
+    setTimeout(() => { error.value = null }, 3000)
+    return
+  }
+  isAddingMode.value = !isAddingMode.value
+  if (!isAddingMode.value) {
+    // Если выключили режим - скрываем подтверждение
+    showAddConfirm.value = false
+  }
+}
+
+// ===== ГЕОКОДИРОВАНИЕ (координаты → адрес) =====
+const getAddressFromCoords = async (coords) => {
+  try {
+    // Используем API геокодирования Яндекса
+    const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
+    const [lat, lon] = coords
+    
+    const response = await axios.get(
+      `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lon},${lat}&results=1&lang=ru_RU&format=json`
+    )
+    
+    const geoObjects = response.data.response.GeoObjectCollection.featureMember
+    
+    if (geoObjects.length > 0) {
+      const address = geoObjects[0].GeoObject.metaDataProperty.GeocoderMetaData.text
+      console.log('📍 Найден адрес:', address)
+      return address
+    }
+    
+    return null
+  } catch (err) {
+    console.error('[Geocoding] Ошибка:', err)
+    return null
+  }
+}
+
+// Обработчик клика по карте
+const handleMapClick = async (e) => {
+  // Если не в режиме добавления или карта не готова - игнорируем
+  if (!isAddingMode.value || !map) return
+  
+  // Получаем координаты клика
+  const coords = e.get('coords')
+  if (!coords) return
+  
+  // Предотвращаем стандартное поведение
+  e.stopPropagation()
+  e.preventDefault()
+
+  // Сохраняем координаты для подтверждения
+  pendingObjectCoords.value = coords
+  
+  // 👇 ПОЛУЧАЕМ АДРЕС ПО КООРДИНАТАМ
+  const address = await getAddressFromCoords(coords)
+  
+  // Вычисляем позицию для попапа подтверждения
+  const containerRect = mapContainer.value?.getBoundingClientRect()
+  if (containerRect) {
+    const position = e.get('position')
+    const x = position[0]
+    const y = position[1]
+    
+    confirmPosition.value = {
+      top: `${y + 10}px`,
+      left: `${x + 10}px`
+    }
+  }
+  
+  // Показываем подтверждение с адресом
+  if (address) {
+    success.value = `Адрес: ${address}`
+    setTimeout(() => { success.value = null }, 4000)
+  }
+  
+  showAddConfirm.value = true
+}
+
+// Отмена добавления объекта
+const cancelAddObject = () => {
+  showAddConfirm.value = false
+  pendingObjectCoords.value = null
+  isAddingMode.value = false // выходим из режима
+}
+
+// Подтверждение: открываем модалку для заполнения данных
+const confirmAddObject = async () => {
+    if (!pendingObjectCoords.value || !Array.isArray(pendingObjectCoords.value)) {
+        error.value = 'Координаты не определены'
+        setTimeout(() => { error.value = null }, 3000)
+    return
+  }
+  
+  showAddConfirm.value = false
+  
+  // 👇 ПОЛУЧАЕМ АДРЕС ПЕРЕ ОТКРЫТИЕМ МОДАЛКИ
+  const address = await getAddressFromCoords(pendingObjectCoords.value)
+  
+  // Передаём адрес в модалку (нужно добавить ref на ObjectModal)
+  showObjectModal.value = true
+}
+
+// Обработчик отправки объекта из модалки
+const handleObjectSubmit = async (payload) => {
+  console.log('📦 [ObjectModal] Сохранение объекта:', {
+    name: payload.name,
+    type: payload.type,
+    description: payload.description,
+    coords: payload.coords,
+    timestamp: new Date().toISOString()
+  })
+  
+  loading.value = true
+  
+  try {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    
+    // Создаём временный объект для отображения на карте
+    const newPlacemark = new window.ymaps.Placemark(
+      payload.coords,
+      { 
+        balloonContent: createBalloonContent({ ...payload, id_object: `temp_${Date.now()}` }, 0, payload.type),
+        hintContent: payload.name 
+      },
+      { 
+        preset: markerConfig[payload.type]?.preset || 'islands#grayCircleIcon',
+        isOurObject: true,
+        zIndex: 100
+      }
+    )
+    
+    // Добавляем на карту
+    if (clusterer) {
+      clusterer.add(newPlacemark)
+    } else if (map) {
+      map.geoObjects.add(newPlacemark)
+    }
+    
+    success.value = `Объект "${payload.name}" добавлен!`
+    setTimeout(() => { success.value = null }, 2500)
+    
+    // 👇 ДОБАВЬ ЭТУ СТРОКУ:
+    showObjectModal.value = false  // Закрываем модалку!
+    
+    // Выходим из режима добавления
+    isAddingMode.value = false
+    
+  } catch (err) {
+    console.error('[ObjectSubmit] Ошибка:', err)
+    error.value = 'Не удалось добавить объект. Попробуйте позже.'
+  } finally {
+    loading.value = false
+  }
+}
+
+// Обработчик отмены в модалке объекта
+const handleObjectCancel = () => {
+  console.log('[ObjectModal] Отменено')
+  pendingObjectCoords.value = null
+  isAddingMode.value = false
+  showObjectModal.value = false
+}
+
+// Обработчик ошибок в модалке объекта
+const handleObjectError = ({ message }) => {
   error.value = message
   setTimeout(() => { error.value = null }, 3000)
 }
@@ -595,7 +852,8 @@ onBeforeUnmount(() => {
 <style scoped>
 /* === БАЗОВЫЕ СТИЛИ === */
 .map-page { position: relative; width: 97vw; height: 96vh; overflow: hidden; margin: 0; padding: 0; outline: 1px solid rgba(22,143,4,0.3); border-radius: 5px; font-family: Inter, system-ui, sans-serif; box-sizing: border-box; }
-.map-container { position: absolute; inset: 0px; z-index: 1; background: #f1f5f9; }
+.map-container { position: absolute; inset: 0px; z-index: 1; background: #f1f5f9; cursor: grab; }
+.map-container:active { cursor: grabbing; }
 .sidebar { position: absolute; left: 5px; top: 5px; bottom: 500px; width: 330px; z-index: 15; display: flex; flex-direction: column; gap: 2px; pointer-events: none; box-sizing: border-box; }
 .sidebar * { pointer-events: auto; box-sizing: border-box; }
 .sidebar-section { background: rgb(255, 255, 255); backdrop-filter: blur(20px); border-radius: 20px; padding: 18px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 1px solid rgba(10, 73, 0, 0.436); }
@@ -631,6 +889,122 @@ onBeforeUnmount(() => {
 .geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
 .geo-btn:active:not(:disabled) { transform: scale(0.96); }
 .geo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* 👇 КНОПКА ДОБАВЛЕНИЯ ОБЪЕКТА */
+.add-object-btn {
+  width: 43px; height: 43px;
+  border: 2px solid #e2e8f0;
+  background: linear-gradient(135deg, #168f04, #007306);
+  color: white;
+  font-size: 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.5s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.add-object-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 8px 24px rgba(22,143,4,0.45);
+}
+.add-object-btn.active {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border-color: #dc2626;
+  box-shadow: 0 4px 16px rgba(220,38,38,0.3);
+}
+.add-object-btn.active:hover {
+  box-shadow: 0 8px 24px rgba(220,38,38,0.45);
+}
+
+/* 👇 ПОДСКАЗКА ПРИ ДОБАВЛЕНИИ */
+.add-mode-hint {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  background: rgba(22, 143, 4, 0.95);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  animation: slideDown 0.5s;
+}
+.hint-close {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  margin-left: 8px;
+}
+
+/* 👇 ПОПАП ПОДТВЕРЖДЕНИЯ ДОБАВЛЕНИЯ */
+.add-confirm-popup {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+}
+.add-confirm-popup * { pointer-events: auto; }
+.confirm-content {
+  background: white;
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.418);
+  border: 1px solid rgba(22,143,4,0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+  min-width: 220px;
+}
+.confirm-content i {
+  font-size: 18px;
+  color: #168f04;
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.confirm-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.5s;
+}
+.confirm-btn.cancel {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.confirm-btn.cancel:hover {
+  background: #e2e8f0;
+  color: #475569;
+}
+.confirm-btn.confirm {
+  background: linear-gradient(135deg, #168f04, #007306);
+  color: white;
+}
+
+/* Индикатор загрузки */
 .loading-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 25; background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); padding: 18px 32px; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 14px; color: #1a1a1a; font-weight: 600; border: 1px solid rgba(22,143,4,0.2); }
 .spinner-icon { font-size: 22px; color: #168f04; }
 .error-overlay, .success-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 14px 22px; border-radius: 14px; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid; animation: slideDown 0.4s; max-width: 400px; }
@@ -638,96 +1012,17 @@ onBeforeUnmount(() => {
 .success-overlay { background: rgba(220,252,231,0.95); border-color: #86efac; color: #16a34a; }
 .close-btn { background: none; border: none; color: inherit; font-size: 16px; cursor: pointer; padding: 4px; margin-left: 8px; border-radius: 8px; transition: all 0.2s; display: flex; align-items: center; }
 .close-btn:hover { background: rgba(0,0,0,0.08); transform: scale(1.1); }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.4s; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.4s; }
+.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.5s; }
 .fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-10px); }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
-:global(.ymaps-2-1-79-zoom-control) { border-radius: 16px !important; overflow: visible !important; box-shadow: 0 8px 32px rgba(255, 0, 0, 0.15) !important; z-index: 1000 !important; opacity: 1 !important; display: block !important; }
-:global(.ymaps-2-1-79-zoom-control .ymaps-2-1-79-zoom-control__button) { background: rgba(255,255,255,0.95) !important; border: 1px solid rgba(22,143,4,0.2) !important; color: #64748b !important; transition: all 0.3s !important; width: 48px !important; height: 48px !important; }
-:global(.ymaps-2-1-79-zoom-control .ymaps-2-1-79-zoom-control__button:hover) { background: rgba(22,143,4,0.1) !important; color: #168f04 !important; }
-:global(.ymaps-2-1-79-zoom-control .ymaps-2-1-79-zoom-control__zoom-scale) { background: rgba(22,143,4,0.15) !important; border-radius: 4px !important; }
 @media (max-width: 768px) {
   .sidebar { width: 260px; left: 12px; top: 12px; bottom: 90px; }
   .info-panel { left: 12px; bottom: 12px; flex-wrap: wrap; gap: 8px; }
   .map-controls-right { top: 12px; right: 12px; gap: 10px; }
-  .layer-btn, .geo-btn { width: 44px; height: 44px; }
-}
-
-/* === СТИЛИ ДЛЯ ОТЗЫВОВ === */
-.review-form { display: flex; flex-direction: column; gap: 20px; padding: 8px 4px; }
-.form-group { display: flex; flex-direction: column; gap: 8px; }
-.form-label { font-size: 13px; font-weight: 600; color: #334155; }
-.review-categories { display: flex; gap: 8px; flex-wrap: wrap; }
-.category-chip { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 20px; font-size: 12px; font-weight: 500; color: #475569; cursor: pointer; transition: all 0.3s; }
-.category-chip:hover { border-color: #168f04; color: #168f04; background: rgba(22,143,4,0.05); }
-.category-chip.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: white; box-shadow: 0 4px 12px rgba(22,143,4,0.3); }
-.category-chip i { font-size: 14px; }
-.rating-stars { display: flex; align-items: center; gap: 4px; }
-.star-btn { background: none; border: none; padding: 4px; color: #cbd5e1; font-size: 20px; cursor: pointer; transition: all 0.2s; }
-.star-btn:hover, .star-btn.filled { color: #fbbf24; transform: scale(1.1); }
-.rating-value { margin-left: 8px; font-size: 13px; font-weight: 600; color: #64748b; }
-.review-actions { display: flex; justify-content: flex-end; gap: 10px; }
-
-/* === СТИЛИ ДЛЯ ЗАГРУЗКИ ФОТО === */
-.photo-upload { display: flex; flex-direction: column; gap: 10px; }
-.photo-preview {
-  position: relative;
-  width: 100%;
-  max-width: 200px;
-  aspect-ratio: 4/3;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  border: 2px solid rgba(22,143,4,0.3);
-}
-.preview-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.remove-photo {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: rgba(220,38,38,0.9);
-  color: white;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-.remove-photo:hover { background: #dc2626; transform: scale(1.1); }
-.upload-hint {
-  font-size: 11px;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-}
-.upload-hint i { font-size: 12px; }
-
-/* === СТИЛИ ДЛЯ FILEUPLOAD PRIMEVUE === */
-:deep(.photo-uploader .p-fileupload-choose) {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
-:deep(.photo-uploader .p-fileupload-choose:hover) {
-  background: transparent !important;
-}
-:deep(.photo-uploader .p-fileupload-input) {
-  cursor: pointer;
+  .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
+  .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
 }
 </style>
