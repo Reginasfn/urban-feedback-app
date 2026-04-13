@@ -63,3 +63,23 @@ def get_db():
         raise
     finally:
         db.close()  # Обязательно закрываем сессию
+
+def get_db_connection():
+    """
+    Возвращает raw psycopg2 connection для прямых SQL-запросов.
+    """
+    import psycopg2
+    from dotenv import load_dotenv
+    import os
+    
+    # Читаем настройки (если .env ещё не загружен)
+    load_dotenv()
+    
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", "5432"),
+        database=os.getenv("DB_NAME", "db_citycare"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASS", "27022006")
+    )
+    return conn

@@ -136,6 +136,7 @@
 </template>
 
 <script setup>
+import axios from 'axios'
 import { ref, computed, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import Textarea from 'primevue/textarea'
@@ -182,7 +183,8 @@ const emit = defineEmits([
   'submit',               // При успешной отправке: { formData, photo }
   'cancel',               // При отмене
   'photo-select',         // При выборе фото: { file, preview, name, size }
-  'photo-remove'          // При удалении фото
+  'photo-remove',
+  'error'          // При удалении фото
 ])
 
 // ===== Внутреннее состояние =====
@@ -245,30 +247,59 @@ const onSubmit = async () => {
   try {
     // Подготовка FormData
     const formData = new FormData()
-    formData.append('object_id', props.selectedObject.id)
+    formData.append('id_object', props.selectedObject.id)
     formData.append('text', reviewForm.value.text.trim())
-    formData.append('category', reviewForm.value.category)
     formData.append('rating', reviewForm.value.rating)
+    formData.append('category', reviewForm.value.category)
     
     if (selectedPhoto.value?.file) {
       formData.append('photo', selectedPhoto.value.file)
     }
     
-    // Отправляем данные родителю
-    emit('submit', {
-      formData,
-      photo: selectedPhoto.value ? {
-        name: selectedPhoto.value.name,
-        size: selectedPhoto.value.size,
-        type: selectedPhoto.value.file.type
-      } : null
+    // 👇 Получаем токен
+    const token = localStorage.getItem('auth_token')
+    
+    if (!token) {
+      emit('error', { message: 'Пользователь не авторизован' })
+      return
+    }
+    
+    console.log('[ReviewModal] Отправка отзыва...', {
+      objectId: props.selectedObject.id,
+      text: reviewForm.value.text,
+      rating: reviewForm.value.rating,
+      category: reviewForm.value.category,
+      hasPhoto: !!selectedPhoto.value
     })
     
-    // Закрываем модалку после успешной отправки
-    // (родитель должен сам управлять закрытием, если нужно показать лоадер)
+    // 👇 ОТПРАВКА НА БЭКЕНД (БЕЗ Content-Type!)
+    const response = await axios.post(
+      'http://localhost:8000/reviews/',
+      formData,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // ❌ НЕ УСТАНАВЛИВАЙ Content-Type вручную!
+          // Axios сам установит 'multipart/form-data; boundary=...'
+        }
+      }
+    )
+    
+    console.log('[ReviewModal] Ответ сервера:', response.data)
+    
+    // Если успешно - эмитим с reviewId
+    emit('submit', {
+      reviewId: response.data.id_review,
+      message: response.data.message || 'Отзыв успешно добавлен!'
+    })
+    
+    isVisible.value = false
     
   } catch (err) {
-    console.error('[ReviewModal] Ошибка при подготовке данных:', err)
+    console.error('[ReviewModal] Ошибка отправки:', err)
+    console.error('[ReviewModal] Ответ сервера:', err.response?.data)
+    const message = err.response?.data?.detail || 'Не удалось отправить отзыв'
+    emit('error', { message })
   } finally {
     submitting.value = false
   }

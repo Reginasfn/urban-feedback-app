@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.database import engine, Base, get_db  # 👈 Импортируем Base и engine
 from api.endpoints import objects, stats, auth, users, reviews
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(
     title="ComfortUfa API",
@@ -10,20 +11,22 @@ app = FastAPI(
     docs_url="/docs",
 )
 
-# 🔐 CORS
+# 👇 ДОБАВЬ ЭТОТ БЛОК ПОСЛЕ СОЗДАНИЯ app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Твой фронтенд
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Разрешаем все методы
+    allow_headers=["*"],  # Разрешаем все заголовки
 )
 
-# 📦 Роутеры
 app.include_router(objects.router)
 app.include_router(stats.router)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(reviews.router)
+
+app.mount("/resources", StaticFiles(directory="resources"), name="resources")
 
 @app.on_event("startup")
 async def startup_event():

@@ -10,7 +10,7 @@ from api.database import get_db
 from api.schemas import PlatformStats  # Импортируем схему из ШАГА 1
 
 # Создаём роутер
-router = APIRouter(prefix="/api", tags=["Статистика"])
+router = APIRouter(prefix="/api", tags=["Statistics"])
 
 @router.get("/stats", response_model=PlatformStats)
 async def get_platform_stats(db: Session = Depends(get_db)):

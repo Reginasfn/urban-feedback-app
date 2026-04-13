@@ -759,34 +759,48 @@ window.__toggleBookmark = (objectId, btnElement) => {
     setTimeout(() => { success.value = null }, 2000)
 }
 
-window.__openReview = (objectId, objectName, objectType) => {
-    if (!isAuthenticated.value) {
-        error.value = 'Необходимо авторизоваться, чтобы оставить отзыв'
-        setTimeout(() => { error.value = null }, 3000)
-        return
-    }
-    selectedObjectForReview.value = { id: objectId, name: objectName, type: objectType }
-    showReviewModal.value = true
+// ===== ОБРАБОТЧИКИ ДЛЯ REVIEWMODAL =====
+// Добавьте обработчик для отправки отзыва
+const handleReviewSubmit = async (payload) => {
+  console.log('[Review] Получен payload:', payload)
+  
+  // payload содержит: { formData, photo }
+  // Здесь можно отправить данные на бэкенд если нужно
+  
+  success.value = 'Отзыв успешно отправлен!'
+  showReviewModal.value = false
+  setTimeout(() => { success.value = null }, 2500)
 }
 
-// ===== ОБРАБОТЧИКИ ДЛЯ REVIEWMODAL =====
-const handleReviewSubmit = async ({ formData }) => {
-  loading.value = true
-  try {
-    await new Promise(resolve => setTimeout(resolve, 1200))
-    success.value = 'Отзыв успешно отправлен!'
-    showReviewModal.value = false
-    setTimeout(() => { success.value = null }, 2500)
-  } catch (err) {
-    console.error('[ReviewSubmit] Ошибка:', err)
-    error.value = 'Не удалось отправить отзыв. Попробуйте позже.'
-  } finally {
-    loading.value = false
+// В глобальной функции открытия модалки передавайте корректные данные:
+window.__openReview = (objectId, objectName, objectType) => {
+  console.log('[__openReview] Вызов:', { objectId, objectName, objectType })
+  console.log('[__openReview] isAuthenticated:', isAuthenticated.value)
+  
+  if (!isAuthenticated.value) {
+    console.warn('[__openReview] Пользователь не авторизован!')
+    error.value = 'Необходимо авторизоваться, чтобы оставить отзыв'
+    setTimeout(() => { error.value = null }, 3000)
+    return
   }
+  
+  selectedObjectForReview.value = { 
+    id: parseInt(objectId),
+    name: objectName, 
+    type: objectType 
+  }
+  console.log('[__openReview] selectedObjectForReview:', selectedObjectForReview.value)
+  console.log('[__openReview] showReviewModal = true')
+  
+  showReviewModal.value = true
+}
+
+const handleReviewError = ({ message }) => {
+  error.value = message
+  setTimeout(() => { error.value = null }, 3000)
 }
 
 const handleReviewCancel = () => { console.log('[ReviewModal] Отменено') }
-const handleReviewError = ({ message }) => { error.value = message; setTimeout(() => { error.value = null }, 3000) }
 
 // ===== WATCHERS =====
 watch(isAddingMode, (newValue) => {
