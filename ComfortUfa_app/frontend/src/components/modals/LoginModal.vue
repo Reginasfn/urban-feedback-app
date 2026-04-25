@@ -4,7 +4,7 @@
         @update:visible="$emit('update:visible', $event)"
         modal
         header="Вход в ComfortUfa"
-        :style="{ width: '400px' }"
+        :style="{ width: '400px'}"
         :draggable="false"
         :closable="true"
         :dismissableMask="true"
@@ -183,8 +183,8 @@ export default {
 /* === ТВОИ СТИЛИ — НЕ ТРОГАЛ === */
 .input-icon {
     position: absolute;
-    top: 50%;
-    left: 12px;
+    top: 35px;
+    left: 17px;
     transform: translateY(-50%);
     z-index: 10;
     color: #94a3b8;
@@ -205,13 +205,15 @@ export default {
     height: 3.5rem;
     border-radius: 10px !important;
     font-weight: 700 !important;
-    background: linear-gradient(135deg, #79cea5 0%, #003f1a 100%) !important;
+    background: linear-gradient(135deg, #78a881 0%, #003f1a 100%) !important;
     border: none !important;
+    font-family:monospace;
 }
 .register-link {
     margin-top: 20px;
     text-align: center;
     font-size: 14px;
+    font-family:monospace;
     color: #64748b;
     padding-top: 16px;
     border-top: 1px solid #f1f5f9;

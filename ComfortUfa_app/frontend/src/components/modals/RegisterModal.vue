@@ -266,11 +266,12 @@ export default {
 /* === ТВОИ СТИЛИ — НЕ ТРОГАЛ === */
 .input-icon {
     position: absolute;
-    top: 50%;
-    left: 12px;
+    top: 35px;
+    left: 17px;
     transform: translateY(-50%);
     z-index: 10;
     color: #94a3b8;
+    
 }
 :deep(.p-iftalabel .p-inputtext),
 :deep(.p-iftalabel .p-password-input),
@@ -289,19 +290,22 @@ export default {
     height: 3.5rem;
     border-radius: 10px;
     font-weight: 700;
-    background: linear-gradient(135deg, #79cea5 0%, #003f1a 100%) !important;
+    background: linear-gradient(135deg, #78a881 0%, #003f1a 100%) !important;
     border: none;
+    font-family:monospace
 }
 .login-link {
     margin-top: 20px;
     text-align: center;
     font-size: 14px;
     color: #64748b;
+    font-family:monospace;
 }
-.p-button-link { color: #168f04 !important; }
+.p-button-link { color: #168f04 !important; font-family:monospace;}
 :deep(.p-dialog) {
     border-radius: 18px !important;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+    
 }
 :deep(.p-dialog-header) { padding: 1.5rem 1.5rem 0 1.5rem !important; }
 .p-error {

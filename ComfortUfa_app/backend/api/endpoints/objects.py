@@ -87,3 +87,38 @@ async def get_object_types(db: Session = Depends(get_db)):
             "Камера видеонаблюдения", "Кафе", "Фонарь", "Скамейка",
             "Парк", "Беседка", "Остановка", "Детская площадка"
         ]
+
+@router.get("/objects/top-categories", response_model=List[dict])
+async def get_top_categories(
+    limit: int = Query(5, ge=1, le=20),
+    db: Session = Depends(get_db)
+):
+    """Возвращает топ категорий по количеству объектов в БД"""
+    try:
+        query = text("""
+            SELECT 
+                t.name_type as category,
+                COUNT(o.id_object) as count
+            FROM public.objects o
+            LEFT JOIN public.type_object t ON o.id_type = t.id_type
+            WHERE o.id_status = 2  -- только одобренные объекты
+              AND t.name_type IS NOT NULL
+            GROUP BY t.name_type
+            ORDER BY count DESC
+            LIMIT :limit
+        """)
+        
+        result = db.execute(query, {"limit": limit})
+        rows = result.fetchall()
+        
+        return [
+            {"category": row.category, "count": row.count}
+            for row in rows
+        ]
+        
+    except Exception as e:
+        print(f"❌ Ошибка при получении топ-категорий: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка сервера: {str(e)[:200]}"
+        )

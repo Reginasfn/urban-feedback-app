@@ -21,9 +21,9 @@
         <div class="footer-section">
           <h4 class="section-title">Информация</h4>
           <router-link to="/about" class="footer-link">О проекте</router-link>
-          <router-link to="/rules" class="footer-link">Правила</router-link>
+          <!-- <router-link to="/rules" class="footer-link">Правила</router-link>
           <router-link to="/faq" class="footer-link">Вопросы</router-link>
-          <router-link to="/contacts" class="footer-link">Контакты</router-link>
+          <router-link to="/contacts" class="footer-link">Контакты</router-link> -->
         </div>
         
         <!-- Контакты -->

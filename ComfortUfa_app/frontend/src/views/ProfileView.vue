@@ -5,7 +5,6 @@
     <div class="profile-header">
       <div class="container">
         <h1 class="page-title">Личный профиль</h1>
-        <p class="page-subtitle">Управляйте своими данными и настройками</p>
       </div>
     </div>
 
@@ -143,7 +142,7 @@
         </Card>
 
         <!-- Боковая панель: статистика и действия -->
-        <div class="profile-sidebar">
+        <div class="profile-sidebar" style="display: flex; flex-direction: column; gap: 10px;">
           
           <!-- Статистика пользователя -->
           <Card class="stats-card">
@@ -177,12 +176,6 @@
 
           <!-- Опасная зона -->
           <Card class="danger-card">
-            <template #title>
-              <div class="card-title danger">
-                <i class="pi pi-exclamation-triangle"></i>
-                <span>Безопасность</span>
-              </div>
-            </template>
             <template #content>
               <Button 
                 label="Выйти из аккаунта" 
@@ -286,7 +279,8 @@ export default {
           severity: 'error',
           summary: 'Ошибка',
           detail: 'Не удалось загрузить данные профиля',
-          life: 3000
+          life: 3000,
+          styleClass: 'my-error-toast'
         })
       } finally {
         this.loading = false
@@ -372,7 +366,8 @@ export default {
           severity: 'warn',
           summary: 'Проверьте форму',
           detail: 'Исправьте ошибки в полях',
-          life: 3000
+          life: 3000,
+          styleClass: 'my-big-toast'
         })
         return
       }
@@ -405,7 +400,8 @@ export default {
             severity: 'info',
             summary: 'Информация',
             detail: 'Нет изменений для сохранения',
-            life: 2000
+            life: 2000,
+            styleClass: 'my-info-toast'
           })
           this.cancelEditing()
           return
@@ -443,7 +439,8 @@ export default {
           severity: 'success',
           summary: 'Успешно',
           detail: 'Данные профиля обновлены',
-          life: 3000
+          life: 3000,
+          styleClass: 'my-success-toast'
         })
         
       } catch (error) {
@@ -455,7 +452,8 @@ export default {
           severity: 'error',
           summary: 'Ошибка',
           detail: message,
-          life: 4000
+          life: 4000,
+          styleClass: 'my-error-toast'
         })
       } finally {
         this.saving = false
@@ -475,7 +473,8 @@ export default {
         severity: 'info',
         summary: 'Выход',
         detail: 'Вы вышли из системы',
-        life: 2000
+        life: 2000,
+        styleClass: 'my-info-toast'
       })
       
       this.$router.push('/')
@@ -498,10 +497,9 @@ export default {
 /* ===================== ОБЩИЕ СТИЛИ ===================== */
 .profile-page {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #1a1a1a;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  padding-bottom: 60px;
+  color: #003b08;
+  background: transparent;
+  padding-bottom: 100px;
 }
 
 .container {
@@ -512,25 +510,17 @@ export default {
 
 /* ===================== ЗАГОЛОВОК ===================== */
 .profile-header {
-  background: rgba(255, 255, 255, 0.8);
+  background: transparent;
   backdrop-filter: blur(20px);
-  padding: 40px 0;
-  border-bottom: 1px solid rgba(22, 143, 4, 0.15);
-  margin-bottom: 40px;
+  padding: 60px 0px 0px;
+  margin-bottom: 20px;
 }
 
 .page-title {
-  font-size: 36px;
+  font-size: 33px;
   font-weight: 800;
-  color: #1e3a5f;
+  color: #014f00;
   margin: 0 0 8px;
-  text-align: center;
-}
-
-.page-subtitle {
-  color: #64748b;
-  font-size: 16px;
-  margin: 0;
   text-align: center;
 }
 
@@ -538,14 +528,8 @@ export default {
 .profile-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
-  gap: 24px;
+  gap: 15px;
   align-items: start;
-}
-
-@media (max-width: 900px) {
-  .profile-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ===================== КАРТОЧКИ ===================== */

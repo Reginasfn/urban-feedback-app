@@ -1,7 +1,8 @@
 /* ===================== БАЗОВЫЕ СТИЛИ ДЛЯ ВСЕХ ТОСТОВ ===================== */
 .p-toast .my-big-toast,
 .p-toast .my-error-toast,
-.p-toast .my-success-toast {
+.p-toast .my-success-toast,
+.p-toast .my-info-toast {
     background: rgba(255, 255, 255, 0.9) !important;
     backdrop-filter: blur(20px) !important;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 
@@ -13,14 +14,16 @@
 
 .p-toast .my-big-toast .p-toast-message-content,
 .p-toast .my-error-toast .p-toast-message-content,
-.p-toast .my-success-toast .p-toast-message-content {
+.p-toast .my-success-toast .p-toast-message-content,
+.p-toast .my-info-toast .p-toast-message-content {
     padding: 15px !important;
     align-items: center !important;
 }
 
 .p-toast .my-big-toast .p-toast-summary,
 .p-toast .my-error-toast .p-toast-summary,
-.p-toast .my-success-toast .p-toast-summary {
+.p-toast .my-success-toast .p-toast-summary,
+.p-toast .my-info-toast .p-toast-summary {
     font-size: 18px !important;
     font-weight: 700 !important;
     font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
@@ -30,13 +33,15 @@
 
 .p-toast .my-big-toast .p-toast-detail,
 .p-toast .my-error-toast .p-toast-detail,
-.p-toast .my-success-toast .p-toast-detail {
+.p-toast .my-success-toast .p-toast-detail,
+.p-toast .my-info-toast .p-toast-detail {
     font-size: 16px !important;
 }
 
 .p-toast .my-big-toast .p-toast-message-icon,
 .p-toast .my-error-toast .p-toast-message-icon,
-.p-toast .my-success-toast .p-toast-message-icon {
+.p-toast .my-success-toast .p-toast-message-icon,
+.p-toast .my-info-toast .p-toast-message-icon {
     height: 30px;
     width: 30px;
     margin-right: 5px !important;
@@ -44,7 +49,8 @@
 
 .p-toast .my-big-toast .p-toast-icon-close,
 .p-toast .my-error-toast .p-toast-icon-close,
-.p-toast .my-success-toast .p-toast-icon-close {
+.p-toast .my-success-toast .p-toast-icon-close,
+.p-toast .my-info-toast .p-toast-icon-close {
     color: #9ca3af !important;
 }
 
@@ -71,3 +77,11 @@
 .my-success-toast .p-toast-summary { color: #14532d !important; }
 .my-success-toast .p-toast-detail { color: #15803d !important; }
 .my-success-toast .p-toast-message-icon { color: #22c55e !important; }
+
+/* ===================== ТОСТ: ИНФОРМАЦИЯ (Голубой) ===================== */
+.p-toast .my-info-toast {
+    border-left-color: #3b82f6 !important;
+}
+.my-info-toast .p-toast-summary { color: #1e3a8a !important; }
+.my-info-toast .p-toast-detail { color: #1d4ed8 !important; }
+.my-info-toast .p-toast-message-icon { color: #3b82f6 !important; }

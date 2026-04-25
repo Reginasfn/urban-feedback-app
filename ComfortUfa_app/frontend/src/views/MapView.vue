@@ -26,25 +26,8 @@
         </AutoComplete>
       </div>
 
-      <!-- Топ-5 категорий -->
-      <div class="sidebar-section">
-        <label class="sidebar-label">Топ-5 объектов</label>
-        <div class="top-categories">
-          <button 
-            v-for="(cat, idx) in topCategories" 
-            :key="cat"
-            @click="loadObjects(cat)"
-            :class="{ active: selectedCategory === cat }"
-            class="top-category-btn"
-          >
-            <span class="rank">#{{ idx + 1 }}</span>
-            <span class="name">{{ cat }}</span>
-          </button>
-        </div>
-      </div>
-
       <!-- Все категории -->
-      <div class="sidebar-section">
+      <div class="sidebar-section categories-section">
         <label class="sidebar-label">Все типы объектов</label>
         <div class="categories-list">
           <button 
@@ -191,13 +174,11 @@ import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
 
-// 👇 ИМПОРТ С ПЕРЕИМЕНОВАНИЕМ, чтобы не было конфликта имён
 import { 
   isAuthenticated as checkAuth,
   getCurrentUser 
 } from '@/utils/auth'
 
-// ===== Состояние =====
 const mapContainer = ref(null)
 const loading = ref(false)
 const error = ref(null)
@@ -210,10 +191,8 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const currentLayer = ref('map')
 
-// 👇 Аутентификация
 const isAuthenticated = ref(checkAuth())
 
-// 👇 Слушаем изменения авторизации
 onMounted(() => {
   const handleAuthChange = (event) => {
     isAuthenticated.value = event.detail.isAuthenticated
@@ -230,21 +209,20 @@ const bookmarkedObjects = ref(new Set())
 const showReviewModal = ref(false)
 const selectedObjectForReview = ref(null)
 
-// 👇 ДОБАВЛЕНИЕ ОБЪЕКТОВ
 const isAddingMode = ref(false)
 const showAddConfirm = ref(false)
 const showObjectModal = ref(false)
 const pendingObjectCoords = ref(null)
 const confirmPosition = ref({ top: '0px', left: '0px' })
 
-// Категории отзывов
+const ratingsCache = ref({})
+
 const reviewCategories = [
   { value: 'praise', label: 'Похвала', icon: 'pi pi-thumbs-up' },
   { value: 'suggestion', label: 'Предложение', icon: 'pi pi-lightbulb' },
   { value: 'problem', label: 'Проблема', icon: 'pi pi-exclamation-circle' }
 ]
 
-// Типы объектов для добавления
 const objectTypeOptions = [
   { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
   { label: 'Кафе', value: 'Кафе' },
@@ -262,27 +240,22 @@ let userLocationPlacemark = null
 let activePlacemark = null
 let balloonTimeout = null
 let removeTimeout = null
+let searchTimeout = null
 
-// ===== Константы =====
 const UFA_CENTER = [54.7388, 55.9721]
 const DEFAULT_ZOOM = 12
 
-// ===== Категории =====
 const categories = [
     'Камера видеонаблюдения', 'Кафе', 'Фонарь', 'Скамейка',
     'Парк', 'Беседка', 'Остановка', 'Детская площадка'
 ]
 
-const topCategories = ['Кафе', 'Скамейка', 'Детская площадка', 'Парк', 'Остановка']
-
-// ===== Слои карты =====
 const mapLayers = [
     { id: 'map', title: 'Схема', icon: 'pi pi-hashtag' },
     { id: 'satellite', title: 'Спутник', icon: 'pi pi-globe' },
     { id: 'hybrid', title: 'Гибрид', icon: 'pi pi-map' }
 ]
 
-// ===== Настройки маркеров =====
 const markerConfig = {
     "Кафе": { preset: 'islands#redFoodCircleIcon' },
     "Скамейка": { preset: 'islands#brownCircleIcon' },
@@ -294,7 +267,6 @@ const markerConfig = {
     "Камера видеонаблюдения": { preset: 'islands#blackVideoCircleIcon' }
 }
 
-// ===== PrimeIcons для категорий =====
 const categoryIcons = {
     'Камера видеонаблюдения': 'pi pi-video',
     'Кафе': 'pi pi-map-marker',
@@ -308,39 +280,63 @@ const categoryIcons = {
 
 const getCategoryIcon = (cat) => categoryIcons[cat] || 'pi pi-map-marker'
 
-// 🔍 ===== ПОИСК: теперь делаем запрос к API =====
 const searchCategories = async (event) => {
+  if (searchTimeout) clearTimeout(searchTimeout)
+  
   const query = event.query.trim()
   
-  // Если запрос короткий — не делаем запрос
   if (query.length < 2) {
     searchResults.value = []
     return
   }
   
+  searchTimeout = setTimeout(async () => {
+    try {
+      const response = await axios.get('http://localhost:8000/api/objects', {
+        params: { 
+          search: query, 
+          limit: 15 
+        }
+      })
+      
+      searchResults.value = response.data.map(obj => ({
+        label: `${obj.name} — ${obj.address || 'Адрес не указан'}`,
+        ...obj, 
+        type: obj.type_name
+      }))
+      
+    } catch (err) {
+      console.error('[Search] Ошибка:', err)
+      searchResults.value = []
+    }
+  }, 300)
+}
+
+const fetchObjectRating = async (objectId) => {
   try {
-    // 👇 Запрос к бэкенду с параметром search
-    const response = await axios.get('http://localhost:8000/api/objects', {
-      params: { 
-        search: query, 
-        limit: 15  // показываем топ-15 результатов
-      }
-    })
+    if (ratingsCache.value[objectId]) {
+      return ratingsCache.value[objectId]
+    }
     
-    // 👇 Форматируем результаты для AutoComplete
-    searchResults.value = response.data.map(obj => ({
-      label: `${obj.name} — ${obj.address || 'Адрес не указан'}`,
-      ...obj, // 👈 ВСЕ ДАННЫЕ В ОДНОМ ОБЪЕКТЕ
-      type: obj.type_name
-    }))
+    const response = await axios.get(`http://localhost:8000/reviews/object/${objectId}?limit=100`)
+    const reviews = response.data.reviews || []
+    
+    if (reviews.length === 0) {
+      return { avg: null, count: 0 }
+    }
+    
+    const total = reviews.reduce((sum, r) => sum + (r.rating || 0), 0)
+    const avg = parseFloat((total / reviews.length).toFixed(1))
+    
+    ratingsCache.value[objectId] = { avg, count: reviews.length }
+    return { avg, count: reviews.length }
     
   } catch (err) {
-    console.error('[Search] Ошибка:', err)
-    searchResults.value = []
+    console.error(`[Rating] Ошибка для объекта ${objectId}:`, err)
+    return { avg: null, count: 0 }
   }
 }
 
-// ===== Плавное перемещение к объекту (унифицированная функция) =====
 const navigateToObject = async (obj) => {
   if (!map || !obj.coords) {
     console.error('[Navigate] Карта или координаты не найдены')
@@ -351,7 +347,6 @@ const navigateToObject = async (obj) => {
   
   console.log('[Navigate] Переход к объекту:', obj)
   
-  // 👇 Очищаем предыдущую метку и таймеры
   clearTimeout(balloonTimeout)
   clearTimeout(removeTimeout)
 
@@ -361,16 +356,15 @@ const navigateToObject = async (obj) => {
   }
   
   try {
-    // Плавное перемещение камеры карты с анимацией
     await map.panTo(obj.coords, {
       flying: true,
       duration: 1200
     })
     
-    // Устанавливаем зум после перемещения
     await map.setZoom(16, { duration: 400 })
     
-    // 👇 Создаем и добавляем метку с ПОЛНЫМИ данными
+    const rating = await fetchObjectRating(obj.id_object)
+    
     const placemark = new window.ymaps.Placemark(
       obj.coords,
       { 
@@ -378,7 +372,9 @@ const navigateToObject = async (obj) => {
           id_object: obj.id_object,
           name: obj.name,
           address: obj.address,
-          type_name: obj.type_name
+          type_name: obj.type_name,
+          rating: rating.avg,
+          ratingCount: rating.count
         }, 0, obj.type_name),
         hintContent: obj.name || 'Объект'
       },
@@ -392,13 +388,10 @@ const navigateToObject = async (obj) => {
       }
     )
     
-    // Сохраняем ссылку на активную метку
     activePlacemark = placemark
     
-    // Добавляем метку на карту
     map.geoObjects.add(placemark)
     
-    // 👇 Добавляем обработчик закрытия балуна - удаляем метку с карты
     placemark.events.add('balloonclose', () => {
       if (map.geoObjects && activePlacemark === placemark) {
         map.geoObjects.remove(placemark)
@@ -406,7 +399,6 @@ const navigateToObject = async (obj) => {
       }
     })
     
-    // Открываем балун с небольшой задержкой
     balloonTimeout = setTimeout(() => {
       if (placemark.balloon) {
         placemark.balloon.open()
@@ -423,16 +415,14 @@ const navigateToObject = async (obj) => {
   }
 }
 
-// ===== КАРТОЧКА ОБЪЕКТА В БАЛУНЕ =====
 const createBalloonContent = (obj, index, type) => {
-  console.log('[Balloon] Полученные данные:', obj) // 👈 Лог для отладки
-  
   const isBookmarked = bookmarkedObjects.value.has(obj.id_object)
   const displayName = obj.name || `Объект #${obj.id_object || (index + 1)}`
   const displayAddress = obj.address || 'Адрес не указан'
   const displayType = obj.type_name || type || 'Не указан'
   
-  console.log('[Balloon] Отображение:', { displayName, displayAddress, displayType })
+  const ratingStars = obj.rating ? '★'.repeat(Math.round(obj.rating)) + '☆'.repeat(5 - Math.round(obj.rating)) : 'Нет оценок'
+  const ratingText = obj.rating ? `${obj.rating}/5 (${obj.ratingCount || 0})` : ''
   
   return `
     <div class="object-card">
@@ -446,6 +436,13 @@ const createBalloonContent = (obj, index, type) => {
         <h4>${displayName}</h4>
       </div>
       <p class="object-address"><i class="pi pi-map-marker"></i> ${displayAddress}</p>
+      
+      <!-- Рейтинг -->
+      <div class="object-rating">
+        <span class="stars">${ratingStars}</span>
+        ${ratingText ? `<span class="rating-text">${ratingText}</span>` : ''}
+      </div>
+      
       <div class="object-card-footer">
         <span class="object-type">${displayType}</span>
         <button class="review-btn" onclick="window.__openReview?.('${obj.id_object}', '${displayName.replace(/'/g, "\\'")}', '${displayType}')">
@@ -461,7 +458,26 @@ const createBalloonContent = (obj, index, type) => {
       .object-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(22,143,4,0.1); }
       .object-card-header i { font-size: 20px; color: #168f04; background: rgba(22,143,4,0.1); padding: 8px; border-radius: 10px; }
       .object-card-header h4 { margin: 0; font-size: 16px; font-weight: 700; color: #1a1a1a; }
-      .object-address { margin: 0 0 16px 0; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+      .object-address { margin: 0 0 12px 0; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+      .object-rating { 
+        display: flex; 
+        align-items: center; 
+        gap: 8px; 
+        margin-bottom: 12px; 
+        padding: 8px 12px; 
+        background: rgba(22,143,4,0.08); 
+        border-radius: 8px; 
+      }
+      .object-rating .stars { 
+        color: #fbbf24; 
+        font-size: 14px; 
+        letter-spacing: 2px; 
+      }
+      .object-rating .rating-text { 
+        font-size: 12px; 
+        font-weight: 600; 
+        color: #168f04; 
+      }
       .object-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .object-type { font-size: 11px; font-weight: 600; color: #168f04; background: rgba(22,143,4,0.1); padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
       .review-btn { display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #168f04 0%, #007306 100%); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 14px rgba(22,143,4,0.3); }
@@ -470,7 +486,6 @@ const createBalloonContent = (obj, index, type) => {
   `
 }
 
-// 👇 Обработка нажатия Enter в поле поиска
 const handleSearchKeydown = (event) => {
   if (event.key === 'Enter' && searchResults.value.length > 0) {
     const firstResult = searchResults.value[0]
@@ -484,12 +499,8 @@ const handleSearchKeydown = (event) => {
   }
 }
 
-// 👇 При выборе результата из поиска (клик мышью или выбор из списка)
-// 👈 ИСПРАВЛЕНИЕ: используем правильный доступ к выбранному элементу
 const onCategorySelect = async (event) => {
   const selected = event.value
-
-  console.log('[Select] Выбран элемент:', selected)
 
   if (selected && selected.id_object) {
     await navigateToObject(selected)
@@ -499,7 +510,6 @@ const onCategorySelect = async (event) => {
   }
 }
 
-// ===== Блокировка стандартных объектов Яндекса =====
 const blockDefaultObjects = (e) => {
     const target = e.target
     if (target.classList?.contains('ymaps-2-1-79-object-balloon') || 
@@ -512,7 +522,6 @@ const blockDefaultObjects = (e) => {
     }
 }
 
-// ===== Переключение слоёв =====
 const switchLayer = (layerId) => {
     if (!map) return
     currentLayer.value = layerId
@@ -522,7 +531,6 @@ const switchLayer = (layerId) => {
     setTimeout(() => { success.value = null }, 1500)
 }
 
-// ===== Инициализация карты =====
 const initMap = () => {
     debugInfo.value = 'Загрузка API Яндекс.Карт...'
     return new Promise((resolve, reject) => {
@@ -628,7 +636,6 @@ const createMapInstance = () => {
     })
 }
 
-// ===== ГЕОЛОКАЦИЯ =====
 const goToMyLocation = () => {
     if (loading.value) return
     loading.value = true
@@ -675,7 +682,6 @@ const goToMyLocation = () => {
     )
 }
 
-// ===== КАСТОМНАЯ МЕТКА ПОЛЬЗОВАТЕЛЯ =====
 const createCustomUserMarker = (coords) => {
     const svgString = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
@@ -706,7 +712,6 @@ const createCustomUserMarker = (coords) => {
     }
 }
 
-// ===== ЗАГРУЗКА ОБЪЕКТОВ =====
 const loadObjects = async (type) => {
     if (!map || !clusterer) { error.value = 'Карта ещё не загрузилась'; return }
     loading.value = true; error.value = null; success.value = null
@@ -718,11 +723,43 @@ const loadObjects = async (type) => {
         if (objects.length === 0) { error.value = `Объектов типа "${type}" не найдено`; loading.value = false; return }
         
         const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
-        const placemarks = objects.map((obj, index) => new window.ymaps.Placemark(
-            obj.coords,
-            { balloonContent: createBalloonContent(obj, index, type), hintContent: obj.name || type },
-            { preset: config.preset, isOurObject: true, zIndex: 100 }
-        ))
+        
+        const placemarks = objects.map((obj, index) => {
+            const placemark = new window.ymaps.Placemark(
+                obj.coords,
+                { 
+                    balloonContent: createBalloonContent({
+                        ...obj,
+                        rating: null,
+                        ratingCount: 0
+                    }, index, type), 
+                    hintContent: obj.name || type 
+                },
+                { 
+                    preset: config.preset, 
+                    isOurObject: true, 
+                    zIndex: 100,
+                    objectId: obj.id_object,
+                    objectType: type
+                }
+            )
+            
+            placemark.events.add('balloonopen', async () => {
+                const objectId = placemark.properties.get('objectId')
+                if (objectId && !ratingsCache.value[objectId]) {
+                    const rating = await fetchObjectRating(objectId)
+                    const objData = placemark.properties.get()
+                    placemark.properties.set('balloonContent', createBalloonContent({
+                        ...objData,
+                        rating: rating.avg,
+                        ratingCount: rating.count
+                    }, 0, placemark.properties.get('objectType')))
+                }
+            })
+            
+            return placemark
+        })
+        
         clusterer.add(placemarks)
         objectsCount.value = placemarks.length
         success.value = `Загружено ${placemarks.length} объектов`
@@ -732,10 +769,9 @@ const loadObjects = async (type) => {
     } finally { loading.value = false }
 }
 
-// ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ =====
 window.__toggleBookmark = (objectId, btnElement) => {
     if (!isAuthenticated.value) {
-        error.value = '🔐 Пожалуйста, авторизуйтесь, чтобы добавлять в избранное'
+        error.value = 'Пожалуйста, авторизуйтесь, чтобы добавлять в избранное'
         setTimeout(() => { error.value = null }, 3000)
         return
     }
@@ -759,20 +795,47 @@ window.__toggleBookmark = (objectId, btnElement) => {
     setTimeout(() => { success.value = null }, 2000)
 }
 
-// ===== ОБРАБОТЧИКИ ДЛЯ REVIEWMODAL =====
-// Добавьте обработчик для отправки отзыва
 const handleReviewSubmit = async (payload) => {
   console.log('[Review] Получен payload:', payload)
   
-  // payload содержит: { formData, photo }
-  // Здесь можно отправить данные на бэкенд если нужно
+  try {
+    const formData = new FormData()
+    
+    formData.append('id_object', payload.id_object)
+    formData.append('text', payload.text)
+    formData.append('rating', payload.rating)
+    formData.append('category', payload.category)
+    
+    if (payload.photo) {
+      formData.append('photo', payload.photo)
+    }
+    
+    const token = localStorage.getItem('auth_token')
+    const response = await axios.post('http://localhost:8000/reviews/', formData, {
+      headers: { 
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    console.log('[Review] Ответ сервера:', response.data)
+    
+    const objectId = payload.id_object
+    delete ratingsCache.value[objectId]
+    
+    if (activePlacemark && selectedCategory.value) {
+      await loadObjects(selectedCategory.value)
+    }
+    
+    success.value = 'Отзыв успешно добавлен!'
+  } catch (err) {
+    console.error('[Review] Ошибка отправки:', err)
+    error.value = err.response?.data?.detail || err.message || 'Не удалось отправить отзыв'
+  }
   
-  success.value = 'Отзыв успешно отправлен!'
   showReviewModal.value = false
   setTimeout(() => { success.value = null }, 2500)
 }
 
-// В глобальной функции открытия модалки передавайте корректные данные:
 window.__openReview = (objectId, objectName, objectType) => {
   console.log('[__openReview] Вызов:', { objectId, objectName, objectType })
   console.log('[__openReview] isAuthenticated:', isAuthenticated.value)
@@ -802,7 +865,6 @@ const handleReviewError = ({ message }) => {
 
 const handleReviewCancel = () => { console.log('[ReviewModal] Отменено') }
 
-// ===== WATCHERS =====
 watch(isAddingMode, (newValue) => {
   if (!map) return
   if (newValue) {
@@ -816,7 +878,6 @@ watch(isAddingMode, (newValue) => {
   }
 })
 
-// ===== ФУНКЦИИ ДЛЯ ДОБАВЛЕНИЯ ОБЪЕКТОВ =====
 const toggleAddMode = () => {
   if (!isAuthenticated.value) {
     error.value = 'Необходимо авторизоваться, чтобы добавлять объекты'
@@ -893,7 +954,7 @@ const handleObjectSubmit = async (payload) => {
     const newPlacemark = new window.ymaps.Placemark(
       payload.coords,
       { 
-        balloonContent: createBalloonContent({ ...payload, id_object: `temp_${Date.now()}` }, 0, payload.type),
+        balloonContent: createBalloonContent({ ...payload, id_object: `temp_${Date.now()}`, rating: null, ratingCount: 0 }, 0, payload.type),
         hintContent: payload.name 
       },
       { 
@@ -927,7 +988,6 @@ const handleObjectError = ({ message }) => {
   setTimeout(() => { error.value = null }, 3000)
 }
 
-// ===== LIFE CYCLE =====
 onMounted(async () => {
     try {
         await initMap()
@@ -944,186 +1004,225 @@ onBeforeUnmount(() => {
     }
     clearTimeout(balloonTimeout)
     clearTimeout(removeTimeout)
+    clearTimeout(searchTimeout)
     if (map) { map.destroy(); map = null; clusterer = null; userLocationPlacemark = null }
     delete window.__toggleBookmark
     delete window.__openReview
 })
 </script>
 
-<style scoped>
-/* === БАЗОВЫЕ СТИЛИ === */
-.map-page { position: relative; width: 97vw; height: 96vh; overflow: hidden; margin: 0; padding: 0; outline: 1px solid rgba(22,143,4,0.3); border-radius: 5px; font-family: Inter, system-ui, sans-serif; box-sizing: border-box; }
-.map-container { position: absolute; inset: 0px; z-index: 1; background: #f1f5f9; cursor: grab; }
-.map-container:active { cursor: grabbing; }
-.sidebar { position: absolute; left: 5px; top: 5px; bottom: 500px; width: 330px; z-index: 15; display: flex; flex-direction: column; gap: 2px; pointer-events: none; box-sizing: border-box; }
-.sidebar * { pointer-events: auto; box-sizing: border-box; }
-.sidebar-section { background: rgb(255, 255, 255); backdrop-filter: blur(20px); border-radius: 20px; padding: 18px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 1px solid rgba(10, 73, 0, 0.436); }
-.sidebar-label { display: block; font-size: 12px; font-weight: 700; color: #143200; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; padding-left: 4px; }
-:deep(.p-autocomplete) { width: 100%; }
-:deep(.p-autocomplete .p-inputtext) { font-size: 13px; padding: 11px 14px; border-radius: 12px; border: 2px solid #e2e8f0; transition: all 0.5s; background: rgba(255,255,255,0.9); }
-:deep(.p-autocomplete .p-inputtext:focus) { border-color: #168f04; box-shadow: 0 0 0 4px rgba(22,143,4,0.12); outline: none; background: #fff; }
-:deep(.p-autocomplete-panel) { border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(22,143,4,0.15); }
-:deep(.p-autocomplete-item) { font-size: 13px; padding: 12px 16px; cursor: pointer; transition: all 0.5s; }
-:deep(.p-autocomplete-item:hover) { background: rgba(22,143,4,0.08); color: #168f04; padding-left: 20px; }
-:deep(.p-autocomplete-item.p-highlight) { background: linear-gradient(135deg, #168f04, #007306); color: #fff; }
-.top-categories { display: flex; flex-direction: column; gap: 8px; }
-.top-category-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: rgba(255,255,255,0.6); border: 2px solid #e2e8f0; border-radius: 12px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; transition: all 0.3s; text-align: left; }
-.top-category-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; transform: translateX(4px); }
-.top-category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 4px 16px rgba(22,143,4,0.3); }
-.top-category-btn .rank { background: rgba(22,143,4,0.15); color: #168f04; font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 20px; min-width: 32px; text-align: center; }
-.top-category-btn.active .rank { background: rgba(255,255,255,0.25); color: #fff; }
-.categories-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; padding-right: 4px; }
-.categories-list::-webkit-scrollbar { width: 4px; }
-.categories-list::-webkit-scrollbar-thumb { background: rgba(22,143,4,0.3); border-radius: 4px; }
-.category-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.5); border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12px; color: #334155; cursor: pointer; transition: all 0.5s; text-align: left; font-weight: 600; }
-.category-btn:hover { border-color: #168f04; color: #168f04; background: rgba(22,143,4,0.06); padding-left: 18px; }
-.category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; font-weight: 700; }
-.info-panel { position: absolute; left: 340px; bottom: 4px; z-index: 15; background: rgb(255, 255, 255); backdrop-filter: blur(20px); color: #1a1a1a; padding: 8px 13px; border-radius: 16px; font-size: 13px; font-weight: 600; border: 1px solid rgba(18, 131, 0, 0.447); display: flex; align-items: center; gap: 5px; animation: slideUp 0.5s; }
-.category-badge { background: rgba(22,143,4,0.12); color: #168f04; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-.map-controls-right { position: absolute; top: 330px; right: 10px; z-index: 20; display: flex; flex-direction: column; gap: 12px; pointer-events: none; align-items: center; }
-.map-controls-right * { pointer-events: auto; }
-.layer-switcher { display: flex; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); padding: 7px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(22,143,4,0.15); }
-.layer-btn { width: 40px; height: 40px; border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; color: #64748b; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; }
-.layer-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; }
-.layer-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 6px 20px rgba(22,143,4,0.35); }
-.geo-btn { width: 43px; height: 43px; border: 2px solid #e2e8f0; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); color: #64748b; font-size: 18px; border-radius: 12px; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-.geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
-.geo-btn:active:not(:disabled) { transform: scale(0.96); }
-.geo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  <style scoped>
+  .map-page { position: relative; width: 97vw; height: 96vh; overflow: hidden; margin: 0; padding: 0; outline: 1px solid rgba(22,143,4,0.3); border-radius: 5px; font-family: Inter, system-ui, sans-serif; box-sizing: border-box; }
+  .map-container { position: absolute; inset: 0px; z-index: 1; background: #f1f5f9; cursor: grab; }
+  .map-container:active { cursor: grabbing; }
+  .sidebar {
+    position: absolute;
+    left: 5px;
+    top: 5px;
+    bottom: 5px;
+    width: 330px;
+    z-index: 15;
 
-/* 👇 КНОПКА ДОБАВЛЕНИЯ ОБЪЕКТА */
-.add-object-btn {
-  width: 43px; height: 43px;
-  border: 2px solid #e2e8f0;
-  background: linear-gradient(135deg, #168f04, #007306);
-  color: white;
-  font-size: 18px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.5s;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    pointer-events: none;
+  }
+  .sidebar * { pointer-events: auto; box-sizing: border-box; }
+  .sidebar-section { background: rgb(255, 255, 255); backdrop-filter: blur(20px); border-radius: 20px; padding: 18px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 1px solid rgba(10, 73, 0, 0.436); }
+  .sidebar-label { display: block; font-size: 12px; font-weight: 700; color: #143200; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; padding-left: 4px; }
+  :deep(.p-autocomplete) { width: 100%; }
+  :deep(.p-autocomplete .p-inputtext) { font-size: 13px; padding: 11px 14px; border-radius: 12px; border: 2px solid #e2e8f0; transition: all 0.5s; background: rgba(255,255,255,0.9); }
+  :deep(.p-autocomplete .p-inputtext:focus) { border-color: #168f04; box-shadow: 0 0 0 4px rgba(22,143,4,0.12); outline: none; background: #fff; }
+  :deep(.p-autocomplete-panel) { border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(22,143,4,0.15); }
+  :deep(.p-autocomplete-item) { font-size: 13px; padding: 12px 16px; cursor: pointer; transition: all 0.5s; }
+  :deep(.p-autocomplete-item:hover) { background: rgba(22,143,4,0.08); color: #168f04; padding-left: 20px; }
+  :deep(.p-autocomplete-item.p-highlight) { background: linear-gradient(135deg, #168f04, #007306); color: #fff; }
+  .top-categories { display: flex; flex-direction: column; gap: 8px; }
+  .top-category-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: rgba(255,255,255,0.6); border: 2px solid #e2e8f0; border-radius: 12px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; transition: all 0.3s; text-align: left; }
+  .top-category-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; transform: translateX(4px); }
+  .top-category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 4px 16px rgba(22,143,4,0.3); }
+  .top-category-btn .rank { background: rgba(22,143,4,0.15); color: #168f04; font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 20px; min-width: 32px; text-align: center; }
+  .top-category-btn.active .rank { background: rgba(255,255,255,0.25); color: #fff; }
+
+
+  .categories-list {
+    flex: 1;
+    overflow-y: auto;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    padding-right: 6px;
+  }
+
+
+    .categories-list::-webkit-scrollbar { width: 4px; }
+  .categories-list::-webkit-scrollbar-thumb { background: rgba(22,143,4,0.3); border-radius: 4px; }
+  .category-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.5); border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12px; color: #334155; cursor: pointer; transition: all 0.5s; text-align: left; font-weight: 600; }
+  .category-btn:hover { border-color: #168f04; color: #168f04; background: rgba(22,143,4,0.06); padding-left: 18px; }
+  .category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; font-weight: 700; }
+  .info-panel { position: absolute; left: 340px; bottom: 4px; z-index: 15; background: rgb(255, 255, 255); backdrop-filter: blur(20px); color: #1a1a1a; padding: 8px 13px; border-radius: 16px; font-size: 13px; font-weight: 600; border: 1px solid rgba(18, 131, 0, 0.447); display: flex; align-items: center; gap: 5px; animation: slideUp 0.5s; }
+  .category-badge { background: rgba(22,143,4,0.12); color: #168f04; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .map-controls-right { position: absolute; top: 330px; right: 10px; z-index: 20; display: flex; flex-direction: column; gap: 12px; pointer-events: none; align-items: center; }
+  .map-controls-right * { pointer-events: auto; }
+  .layer-switcher { display: flex; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); padding: 7px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(22,143,4,0.15); }
+  .layer-btn { width: 40px; height: 40px; border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; color: #64748b; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; }
+  .layer-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; }
+  .layer-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 6px 20px rgba(22,143,4,0.35); }
+  .geo-btn { width: 43px; height: 43px; border: 2px solid #e2e8f0; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); color: #64748b; font-size: 18px; border-radius: 12px; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
+  .geo-btn:active:not(:disabled) { transform: scale(0.96); }
+  .geo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .add-object-btn {
+    width: 43px; height: 43px;
+    border: 2px solid #e2e8f0;
+    background: linear-gradient(135deg, #168f04, #007306);
+    color: white;
+    font-size: 18px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.5s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .add-object-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 8px 24px rgba(22,143,4,0.45);
+  }
+  .add-object-btn.active {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    border-color: #dc2626;
+    box-shadow: 0 4px 16px rgba(220,38,38,0.3);
+  }
+  .add-object-btn.active:hover {
+    box-shadow: 0 8px 24px rgba(220,38,38,0.45);
+  }
+
+  .add-mode-hint {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 25;
+    background: rgba(22, 143, 4, 0.95);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 15px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    animation: slideDown 0.5s;
+  }
+  .hint-close {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    margin-left: 8px;
+  }
+
+  .add-confirm-popup {
+    position: absolute;
+    z-index: 30;
+    pointer-events: none;
+  }
+  .add-confirm-popup * { pointer-events: auto; }
+  .confirm-content {
+    background: white;
+    border-radius: 12px;
+    padding: 14px 18px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.418);
+    border: 1px solid rgba(22,143,4,0.2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #1a1a1a;
+    min-width: 220px;
+  }
+  .confirm-content i {
+    font-size: 18px;
+    color: #168f04;
+  }
+  .confirm-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .confirm-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.5s;
+  }
+  .confirm-btn.cancel {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+  .confirm-btn.cancel:hover {
+    background: #e2e8f0;
+    color: #475569;
+  }
+  .confirm-btn.confirm {
+    background: linear-gradient(135deg, #168f04, #007306);
+    color: white;
+  }
+
+  .loading-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 25; background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); padding: 18px 32px; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 14px; color: #1a1a1a; font-weight: 600; border: 1px solid rgba(22,143,4,0.2); }
+  .spinner-icon { font-size: 22px; color: #168f04; }
+  .error-overlay, .success-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 14px 22px; border-radius: 14px; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid; animation: slideDown 0.4s; max-width: 400px; }
+  .error-overlay { background: rgba(254,242,242,0.95); border-color: #fecaca; color: #dc2626; }
+  .success-overlay { background: rgba(220,252,231,0.95); border-color: #86efac; color: #16a34a; }
+  .close-btn { background: none; border: none; color: inherit; font-size: 16px; cursor: pointer; padding: 4px; margin-left: 8px; border-radius: 8px; transition: all 0.2s; display: flex; align-items: center; }
+  .close-btn:hover { background: rgba(0,0,0,0.08); transform: scale(1.1); }
+  .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
+  .fade-enter-from, .fade-leave-to { opacity: 0; }
+  .fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.5s; }
+  .fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-10px); }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @media (max-width: 768px) {
+    .sidebar { width: 260px; left: 12px; top: 12px; bottom: 90px; }
+    .info-panel { left: 12px; bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    .map-controls-right { top: 12px; right: 12px; gap: 10px; }
+    .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
+    .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
+  }
+
+  .categories-section {
+  flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.add-object-btn:hover:not(:disabled) {
-  transform: scale(1.05);
-  box-shadow: 0 8px 24px rgba(22,143,4,0.45);
-}
-.add-object-btn.active {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  border-color: #dc2626;
-  box-shadow: 0 4px 16px rgba(220,38,38,0.3);
-}
-.add-object-btn.active:hover {
-  box-shadow: 0 8px 24px rgba(220,38,38,0.45);
+  flex-direction: column;
 }
 
-/* 👇 ПОДСКАЗКА ПРИ ДОБАВЛЕНИИ */
-.add-mode-hint {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 25;
-  background: rgba(22, 143, 4, 0.95);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  font-size: 15px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-  animation: slideDown 0.5s;
-}
-.hint-close {
-  background: rgba(255,255,255,0.2);
-  border: none;
-  color: white;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  margin-left: 8px;
-}
+.categories-list {
+  flex: 1; 
+  overflow-y: auto;
 
-/* 👇 ПОПАП ПОДТВЕРЖДЕНИЯ ДОБАВЛЕНИЯ */
-.add-confirm-popup {
-  position: absolute;
-  z-index: 30;
-  pointer-events: none;
-}
-.add-confirm-popup * { pointer-events: auto; }
-.confirm-content {
-  background: white;
-  border-radius: 12px;
-  padding: 14px 18px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.418);
-  border: 1px solid rgba(22,143,4,0.2);
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1a1a1a;
-  min-width: 220px;
-}
-.confirm-content i {
-  font-size: 18px;
-  color: #168f04;
-}
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-}
-.confirm-btn {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.5s;
-}
-.confirm-btn.cancel {
-  background: #f1f5f9;
-  color: #64748b;
-}
-.confirm-btn.cancel:hover {
-  background: #e2e8f0;
-  color: #475569;
-}
-.confirm-btn.confirm {
-  background: linear-gradient(135deg, #168f04, #007306);
-  color: white;
-}
+  flex-direction: column;
+  gap: 6px;
 
-/* Индикатор загрузки */
-.loading-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 25; background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); padding: 18px 32px; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 14px; color: #1a1a1a; font-weight: 600; border: 1px solid rgba(22,143,4,0.2); }
-.spinner-icon { font-size: 22px; color: #168f04; }
-.error-overlay, .success-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 14px 22px; border-radius: 14px; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid; animation: slideDown 0.4s; max-width: 400px; }
-.error-overlay { background: rgba(254,242,242,0.95); border-color: #fecaca; color: #dc2626; }
-.success-overlay { background: rgba(220,252,231,0.95); border-color: #86efac; color: #16a34a; }
-.close-btn { background: none; border: none; color: inherit; font-size: 16px; cursor: pointer; padding: 4px; margin-left: 8px; border-radius: 8px; transition: all 0.2s; display: flex; align-items: center; }
-.close-btn:hover { background: rgba(0,0,0,0.08); transform: scale(1.1); }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.5s; }
-.fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-10px); }
-@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes slideDown { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@media (max-width: 768px) {
-  .sidebar { width: 260px; left: 12px; top: 12px; bottom: 90px; }
-  .info-panel { left: 12px; bottom: 12px; flex-wrap: wrap; gap: 8px; }
-  .map-controls-right { top: 12px; right: 12px; gap: 10px; }
-  .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
-  .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
+  padding-right: 4px;
 }
-</style>
+  </style>

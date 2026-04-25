@@ -2,14 +2,17 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import MapView from '../views/MapView.vue'
 import ProfileView from '../views/ProfileView.vue' 
-import AdminView from '../views/AdminView.vue'  // 👈 Импортируем
+import AdminView from '../views/AdminView.vue'
+import AboutView from '../views/AboutView.vue'
+
 
 
 const routes = [
   { path: '/', name: 'Home', component: HomeView },
   { path: '/map', name: 'Map', component: MapView },
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },
-  { path: '/admin', name: 'Admin', component: AdminView }
+  { path: '/admin', name: 'Admin', component: AdminView },
+  { path: '/about', name: 'About', component: AboutView },
 ]
 
 const router = createRouter({
