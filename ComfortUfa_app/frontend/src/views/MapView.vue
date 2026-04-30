@@ -173,6 +173,7 @@ import axios from 'axios'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
+import { useGeolocation } from '@/composables/useGeolocation'
 
 import { 
   isAuthenticated as checkAuth,
@@ -190,31 +191,34 @@ const isMapInitialized = ref(false)
 const searchQuery = ref('')
 const searchResults = ref([])
 const currentLayer = ref('map')
-
 const isAuthenticated = ref(checkAuth())
 
-onMounted(() => {
-  const handleAuthChange = (event) => {
-    isAuthenticated.value = event.detail.isAuthenticated
-  }
-  
-  window.addEventListener('auth-change', handleAuthChange)
-  
-  onBeforeUnmount(() => {
-    window.removeEventListener('auth-change', handleAuthChange)
-  })
-})
-
-const bookmarkedObjects = ref(new Set())
-const showReviewModal = ref(false)
-const selectedObjectForReview = ref(null)
-
+// ===== СОСТОЯНИЯ ДЛЯ ДОБАВЛЕНИЯ ОБЪЕКТОВ =====
 const isAddingMode = ref(false)
 const showAddConfirm = ref(false)
 const showObjectModal = ref(false)
 const pendingObjectCoords = ref(null)
 const confirmPosition = ref({ top: '0px', left: '0px' })
 
+// ===== ГЕОЛОКАЦИЯ: ИНИЦИАЛИЗАЦИЯ COMPOSABLE =====
+const {
+  loading: geoLoading,
+  error: geoError,
+  success: geoSuccess,
+  goToMyLocation: performGeolocation,
+  destroy: destroyGeolocation,
+  removeUserMarker: clearUserMarker
+} = useGeolocation()
+
+// Синхронизация состояний с основными переменными компонента
+watch(geoLoading, (val) => { loading.value = val })
+watch(geoError, (val) => { if (val) error.value = val })
+watch(geoSuccess, (val) => { if (val) success.value = val })
+
+// ===== ДАННЫЕ ДЛЯ ОТЗЫВОВ И ИЗБРАННОГО =====
+const bookmarkedObjects = ref(new Set())
+const showReviewModal = ref(false)
+const selectedObjectForReview = ref(null)
 const ratingsCache = ref({})
 
 const reviewCategories = [
@@ -222,7 +226,6 @@ const reviewCategories = [
   { value: 'suggestion', label: 'Предложение', icon: 'pi pi-lightbulb' },
   { value: 'problem', label: 'Проблема', icon: 'pi pi-exclamation-circle' }
 ]
-
 const objectTypeOptions = [
   { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
   { label: 'Кафе', value: 'Кафе' },
@@ -234,9 +237,9 @@ const objectTypeOptions = [
   { label: 'Детская площадка', value: 'Детская площадка' }
 ]
 
+// ===== ПЕРЕМЕННЫЕ КАРТЫ =====
 let map = null
 let clusterer = null
-let userLocationPlacemark = null
 let activePlacemark = null
 let balloonTimeout = null
 let removeTimeout = null
@@ -280,6 +283,59 @@ const categoryIcons = {
 
 const getCategoryIcon = (cat) => categoryIcons[cat] || 'pi pi-map-marker'
 
+// ===== СОЗДАНИЕ КАСТОМНОГО МАРКЕРА ПОЛЬЗОВАТЕЛЯ =====
+const createCustomUserMarker = (coords) => {
+  const svgString = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+      <ellipse cx="24" cy="44" rx="10" ry="3" fill="rgba(0,0,0,0.2)"/>
+      <path d="M24 2C15.16 2 8 9.16 8 18c0 13.5 16 28 16 28s16-14.5 16-28c0-8.84-7.16-16-16-16z" 
+            fill="#168f04" stroke="#ffffff" stroke-width="2.5"/>
+      <path d="M18 24l4 4 8-8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+    </svg>
+  `.trim()
+  
+  try {
+    return new window.ymaps.Placemark(
+      coords,
+      { hintContent: 'Вы здесь', balloonContent: '<b>Ваше местоположение</b>' },
+      {
+        iconLayout: 'default#image',
+        iconImageHref: `data:image/svg+xml,${encodeURIComponent(svgString)}`,
+        iconImageSize: [48, 48],
+        iconImageOffset: [-24, -48],
+        zIndex: 2000,
+        isOurObject: true
+      }
+    )
+  } catch {
+    return new window.ymaps.Placemark(coords, { hintContent: 'Вы здесь' }, {
+      preset: 'islands#greenCircleDotIcon', zIndex: 2000, isOurObject: true
+    })
+  }
+}
+  
+// ===== ОБНОВЛЁННАЯ ФУНКЦИЯ ГЕОЛОКАЦИИ =====
+const goToMyLocation = async () => {
+  if (!map) {
+    error.value = 'Карта ещё не инициализирована'
+    return
+  }
+
+  loading.value = true
+  error.value = null
+  
+  await performGeolocation({
+    zoom: 18,
+    ymaps: window.ymaps,
+    mapInstance: map,
+    createMarkerFn: createCustomUserMarker,
+    onPositionReceived: ({ coords, accuracy }) => {
+      console.log(`[Geo] Позиция: ${coords}, точность: ${accuracy}м`)
+    }
+  })
+}
+
+// ===== ПОИСК ОБЪЕКТОВ =====
 const searchCategories = async (event) => {
   if (searchTimeout) clearTimeout(searchTimeout)
   
@@ -312,6 +368,7 @@ const searchCategories = async (event) => {
   }, 300)
 }
 
+// ===== ПОЛУЧЕНИЕ РЕЙТИНГА ОБЪЕКТА =====
 const fetchObjectRating = async (objectId) => {
   try {
     if (ratingsCache.value[objectId]) {
@@ -337,6 +394,7 @@ const fetchObjectRating = async (objectId) => {
   }
 }
 
+// ===== НАВИГАЦИЯ К ОБЪЕКТУ =====
 const navigateToObject = async (obj) => {
   if (!map || !obj.coords) {
     console.error('[Navigate] Карта или координаты не найдены')
@@ -389,7 +447,6 @@ const navigateToObject = async (obj) => {
     )
     
     activePlacemark = placemark
-    
     map.geoObjects.add(placemark)
     
     placemark.events.add('balloonclose', () => {
@@ -415,6 +472,7 @@ const navigateToObject = async (obj) => {
   }
 }
 
+// ===== ГЕНЕРАЦИЯ КОНТЕНТА БАЛУНА =====
 const createBalloonContent = (obj, index, type) => {
   const isBookmarked = bookmarkedObjects.value.has(obj.id_object)
   const displayName = obj.name || `Объект #${obj.id_object || (index + 1)}`
@@ -486,6 +544,7 @@ const createBalloonContent = (obj, index, type) => {
   `
 }
 
+// ===== ОБРАБОТКА НАЖАТИЙ В ПОИСКЕ =====
 const handleSearchKeydown = (event) => {
   if (event.key === 'Enter' && searchResults.value.length > 0) {
     const firstResult = searchResults.value[0]
@@ -510,6 +569,7 @@ const onCategorySelect = async (event) => {
   }
 }
 
+// ===== БЛОКИРОВКА СТАНДАРТНЫХ ОБЪЕКТОВ КАРТЫ =====
 const blockDefaultObjects = (e) => {
     const target = e.target
     if (target.classList?.contains('ymaps-2-1-79-object-balloon') || 
@@ -522,6 +582,7 @@ const blockDefaultObjects = (e) => {
     }
 }
 
+// ===== ПЕРЕКЛЮЧЕНИЕ СЛОЁВ КАРТЫ =====
 const switchLayer = (layerId) => {
     if (!map) return
     currentLayer.value = layerId
@@ -531,6 +592,7 @@ const switchLayer = (layerId) => {
     setTimeout(() => { success.value = null }, 1500)
 }
 
+// ===== ИНИЦИАЛИЗАЦИЯ КАРТЫ =====
 const initMap = () => {
     debugInfo.value = 'Загрузка API Яндекс.Карт...'
     return new Promise((resolve, reject) => {
@@ -636,91 +698,29 @@ const createMapInstance = () => {
     })
 }
 
-const goToMyLocation = () => {
-    if (loading.value) return
-    loading.value = true
-    error.value = null
-    
-    if (!navigator.geolocation) {
-        error.value = 'Геолокация не поддерживается браузером'
-        loading.value = false
-        return
-    }
-    
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const lat = position.coords.latitude
-            const lon = position.coords.longitude
-            const accuracy = position.coords.accuracy
-            
-            if (!map) {
-                error.value = 'Карта не готова'
-                loading.value = false
-                return
-            }
-            
-            map.setCenter([lat, lon], 18, { duration: 600 })
-            
-            if (userLocationPlacemark) {
-                map.geoObjects.remove(userLocationPlacemark)
-            }
-            
-            userLocationPlacemark = createCustomUserMarker([lat, lon])
-            map.geoObjects.add(userLocationPlacemark)
-            
-            const accText = accuracy < 100 ? `±${Math.round(accuracy)}м` : 'приблизительно'
-            success.value = `Вы находитесь здесь (точность: ${accText})`
-            setTimeout(() => { success.value = null }, 3000)
-            loading.value = false
-        },
-        (err) => {
-            const errors = { 1: 'Доступ запрещён', 2: 'Недоступна', 3: 'Тайм-аут' }
-            error.value = `Геолокация: ${errors[err.code] || 'Ошибка'}`
-            loading.value = false
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    )
-}
-
-const createCustomUserMarker = (coords) => {
-    const svgString = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
-            <ellipse cx="24" cy="44" rx="10" ry="3" fill="rgba(0,0,0,0.2)"/>
-            <path d="M24 2C15.16 2 8 9.16 8 18c0 13.5 16 28 16 28s16-14.5 16-28c0-8.84-7.16-16-16-16z" 
-                  fill="#168f04" stroke="#ffffff" stroke-width="2.5"/>
-            <path d="M18 24l4 4 8-8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
-        </svg>
-    `.trim()
-    
-    try {
-        return new window.ymaps.Placemark(
-            coords,
-            { hintContent: 'Вы здесь', balloonContent: '<b>Ваше местоположение</b>' },
-            {
-                iconLayout: 'default#image',
-                iconImageHref: `data:image/svg+xml,${encodeURIComponent(svgString)}`,
-                iconImageSize: [48, 48],
-                iconImageOffset: [-24, -48],
-                zIndex: 2000,
-                isOurObject: true
-            }
-        )
-    } catch {
-        return new window.ymaps.Placemark(coords, { hintContent: 'Вы здесь' }, {
-            preset: 'islands#greenCircleDotIcon', zIndex: 2000, isOurObject: true
-        })
-    }
-}
-
+// ===== ЗАГРУЗКА ОБЪЕКТОВ ПО КАТЕГОРИИ =====
 const loadObjects = async (type) => {
-    if (!map || !clusterer) { error.value = 'Карта ещё не загрузилась'; return }
-    loading.value = true; error.value = null; success.value = null
-    selectedCategory.value = type; clusterer.removeAll(); objectsCount.value = 0
+    if (!map || !clusterer) { 
+      error.value = 'Карта ещё не загрузилась'; 
+      return 
+    }
+    
+    loading.value = true; 
+    error.value = null; 
+    success.value = null
+    selectedCategory.value = type; 
+    clusterer.removeAll(); 
+    objectsCount.value = 0
 
     try {
         const response = await axios.get('http://localhost:8000/api/objects', { params: { type, limit: 1000 } })
         const objects = response.data || []
-        if (objects.length === 0) { error.value = `Объектов типа "${type}" не найдено`; loading.value = false; return }
+        
+        if (objects.length === 0) { 
+          error.value = `Объектов типа "${type}" не найдено`; 
+          loading.value = false; 
+          return 
+        }
         
         const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
         
@@ -756,7 +756,6 @@ const loadObjects = async (type) => {
                     }, 0, placemark.properties.get('objectType')))
                 }
             })
-            
             return placemark
         })
         
@@ -765,10 +764,13 @@ const loadObjects = async (type) => {
         success.value = `Загружено ${placemarks.length} объектов`
         setTimeout(() => { success.value = null }, 1500)
     } catch (err) {
-        error.value = err.response?.data?.detail || `Ошибка: ${err.message}`
-    } finally { loading.value = false }
+      error.value = err.response?.data?.detail || `Ошибка: ${err.message}`
+    } finally { 
+      loading.value = false 
+    }
 }
 
+// ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ BALLOON =====
 window.__toggleBookmark = (objectId, btnElement) => {
     if (!isAuthenticated.value) {
         error.value = 'Пожалуйста, авторизуйтесь, чтобы добавлять в избранное'
@@ -795,12 +797,34 @@ window.__toggleBookmark = (objectId, btnElement) => {
     setTimeout(() => { success.value = null }, 2000)
 }
 
+window.__openReview = (objectId, objectName, objectType) => {
+  console.log('[__openReview] Вызов:', { objectId, objectName, objectType })
+  console.log('[__openReview] isAuthenticated:', isAuthenticated.value)
+  
+  if (!isAuthenticated.value) {
+    console.warn('[__openReview] Пользователь не авторизован!')
+    error.value = 'Необходимо авторизоваться, чтобы оставить отзыв'
+    setTimeout(() => { error.value = null }, 3000)
+    return
+  }
+  
+  selectedObjectForReview.value = { 
+    id: parseInt(objectId),
+    name: objectName, 
+    type: objectType 
+  }
+  console.log('[__openReview] selectedObjectForReview:', selectedObjectForReview.value)
+  console.log('[__openReview] showReviewModal = true')
+  
+  showReviewModal.value = true
+}
+
+// ===== ОБРАБОТЧИКИ МОДАЛЬНЫХ ОКОН =====
 const handleReviewSubmit = async (payload) => {
   console.log('[Review] Получен payload:', payload)
   
   try {
     const formData = new FormData()
-    
     formData.append('id_object', payload.id_object)
     formData.append('text', payload.text)
     formData.append('rating', payload.rating)
@@ -836,28 +860,6 @@ const handleReviewSubmit = async (payload) => {
   setTimeout(() => { success.value = null }, 2500)
 }
 
-window.__openReview = (objectId, objectName, objectType) => {
-  console.log('[__openReview] Вызов:', { objectId, objectName, objectType })
-  console.log('[__openReview] isAuthenticated:', isAuthenticated.value)
-  
-  if (!isAuthenticated.value) {
-    console.warn('[__openReview] Пользователь не авторизован!')
-    error.value = 'Необходимо авторизоваться, чтобы оставить отзыв'
-    setTimeout(() => { error.value = null }, 3000)
-    return
-  }
-  
-  selectedObjectForReview.value = { 
-    id: parseInt(objectId),
-    name: objectName, 
-    type: objectType 
-  }
-  console.log('[__openReview] selectedObjectForReview:', selectedObjectForReview.value)
-  console.log('[__openReview] showReviewModal = true')
-  
-  showReviewModal.value = true
-}
-
 const handleReviewError = ({ message }) => {
   error.value = message
   setTimeout(() => { error.value = null }, 3000)
@@ -865,6 +867,7 @@ const handleReviewError = ({ message }) => {
 
 const handleReviewCancel = () => { console.log('[ReviewModal] Отменено') }
 
+// ===== РЕЖИМ ДОБАВЛЕНИЯ ОБЪЕКТА =====
 watch(isAddingMode, (newValue) => {
   if (!map) return
   if (newValue) {
@@ -888,6 +891,7 @@ const toggleAddMode = () => {
   if (!isAddingMode.value) showAddConfirm.value = false
 }
 
+// ===== ГЕОКОДИНГ: КООРДИНАТЫ → АДРЕС =====
 const getAddressFromCoords = async (coords) => {
   try {
     const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
@@ -906,15 +910,19 @@ const getAddressFromCoords = async (coords) => {
   }
 }
 
+// ===== ОБРАБОТКА КЛИКА ПО КАРТЕ =====
 const handleMapClick = async (e) => {
   if (!isAddingMode.value || !map) return
   const coords = e.get('coords')
   if (!coords) return
+  
   e.stopPropagation()
   e.preventDefault()
   pendingObjectCoords.value = coords
+  
   const address = await getAddressFromCoords(coords)
   const containerRect = mapContainer.value?.getBoundingClientRect()
+  
   if (containerRect) {
     const position = e.get('position')
     confirmPosition.value = {
@@ -922,6 +930,7 @@ const handleMapClick = async (e) => {
       left: `${position[0] + 10}px`
     }
   }
+  
   if (address) {
     success.value = `Адрес: ${address}`
     setTimeout(() => { success.value = null }, 4000)
@@ -946,6 +955,7 @@ const confirmAddObject = async () => {
   showObjectModal.value = true
 }
 
+// ===== СОХРАНЕНИЕ НОВОГО ОБЪЕКТА =====
 const handleObjectSubmit = async (payload) => {
   console.log('📦 [ObjectModal] Сохранение объекта:', payload)
   loading.value = true
@@ -988,241 +998,267 @@ const handleObjectError = ({ message }) => {
   setTimeout(() => { error.value = null }, 3000)
 }
 
+// ===== ХУКИ ЖИЗНЕННОГО ЦИКЛА =====
 onMounted(async () => {
-    try {
-        await initMap()
-        if (categories.length > 0) await loadObjects(categories[0])
-    } catch (err) {
-        error.value = `Ошибка: ${err.message}`
-    }
+  const handleAuthChange = (event) => {
+    isAuthenticated.value = event.detail.isAuthenticated
+  }
+  window.addEventListener('auth-change', handleAuthChange)
+  
+  try {
+    await initMap()
+    if (categories.length > 0) await loadObjects(categories[0])
+  } catch (err) {
+    error.value = `Ошибка инициализации: ${err.message}`
+  }
+  
+  // onBeforeUnmount внутри onMounted
+  onBeforeUnmount(() => {
+    window.removeEventListener('auth-change', handleAuthChange)
+  })
 })
 
 onBeforeUnmount(() => {
-    if (activePlacemark && map?.geoObjects) {
-        map.geoObjects.remove(activePlacemark)
-        activePlacemark = null
-    }
-    clearTimeout(balloonTimeout)
-    clearTimeout(removeTimeout)
-    clearTimeout(searchTimeout)
-    if (map) { map.destroy(); map = null; clusterer = null; userLocationPlacemark = null }
-    delete window.__toggleBookmark
-    delete window.__openReview
+  // Очистка таймеров
+  clearTimeout(balloonTimeout)
+  clearTimeout(removeTimeout)
+  clearTimeout(searchTimeout)
+  
+  // Очистка активных элементов карты
+  if (activePlacemark && map?.geoObjects) {
+    map.geoObjects.remove(activePlacemark)
+    activePlacemark = null
+  }
+  
+  // Очистка маркера геолокации через composable
+  clearUserMarker()
+  destroyGeolocation()
+  
+  // Уничтожение экземпляра карты
+  if (map) { 
+    map.destroy()
+    map = null
+    clusterer = null
+  }
+  
+  // Удаление глобальных функций
+  delete window.__toggleBookmark
+  delete window.__openReview
 })
 </script>
 
-  <style scoped>
-  .map-page { position: relative; width: 97vw; height: 96vh; overflow: hidden; margin: 0; padding: 0; outline: 1px solid rgba(22,143,4,0.3); border-radius: 5px; font-family: Inter, system-ui, sans-serif; box-sizing: border-box; }
-  .map-container { position: absolute; inset: 0px; z-index: 1; background: #f1f5f9; cursor: grab; }
-  .map-container:active { cursor: grabbing; }
-  .sidebar {
-    position: absolute;
-    left: 5px;
-    top: 5px;
-    bottom: 5px;
-    width: 330px;
-    z-index: 15;
+<style scoped>
+.map-page { position: relative; width: 97vw; height: 96vh; overflow: hidden; margin: 0; padding: 0; outline: 1px solid rgba(22,143,4,0.3); border-radius: 5px; font-family: Inter, system-ui, sans-serif; box-sizing: border-box; }
+.map-container { position: absolute; inset: 0px; z-index: 1; background: #f1f5f9; cursor: grab; }
+.map-container:active { cursor: grabbing; }
+.sidebar {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  bottom: 5px;
+  width: 330px;
+  z-index: 15;
 
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-
-    pointer-events: none;
-  }
-  .sidebar * { pointer-events: auto; box-sizing: border-box; }
-  .sidebar-section { background: rgb(255, 255, 255); backdrop-filter: blur(20px); border-radius: 20px; padding: 18px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 1px solid rgba(10, 73, 0, 0.436); }
-  .sidebar-label { display: block; font-size: 12px; font-weight: 700; color: #143200; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; padding-left: 4px; }
-  :deep(.p-autocomplete) { width: 100%; }
-  :deep(.p-autocomplete .p-inputtext) { font-size: 13px; padding: 11px 14px; border-radius: 12px; border: 2px solid #e2e8f0; transition: all 0.5s; background: rgba(255,255,255,0.9); }
-  :deep(.p-autocomplete .p-inputtext:focus) { border-color: #168f04; box-shadow: 0 0 0 4px rgba(22,143,4,0.12); outline: none; background: #fff; }
-  :deep(.p-autocomplete-panel) { border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(22,143,4,0.15); }
-  :deep(.p-autocomplete-item) { font-size: 13px; padding: 12px 16px; cursor: pointer; transition: all 0.5s; }
-  :deep(.p-autocomplete-item:hover) { background: rgba(22,143,4,0.08); color: #168f04; padding-left: 20px; }
-  :deep(.p-autocomplete-item.p-highlight) { background: linear-gradient(135deg, #168f04, #007306); color: #fff; }
-  .top-categories { display: flex; flex-direction: column; gap: 8px; }
-  .top-category-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: rgba(255,255,255,0.6); border: 2px solid #e2e8f0; border-radius: 12px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; transition: all 0.3s; text-align: left; }
-  .top-category-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; transform: translateX(4px); }
-  .top-category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 4px 16px rgba(22,143,4,0.3); }
-  .top-category-btn .rank { background: rgba(22,143,4,0.15); color: #168f04; font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 20px; min-width: 32px; text-align: center; }
-  .top-category-btn.active .rank { background: rgba(255,255,255,0.25); color: #fff; }
-
-
-  .categories-list {
-    flex: 1;
-    overflow-y: auto;
-
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-
-    padding-right: 6px;
-  }
-
-
-    .categories-list::-webkit-scrollbar { width: 4px; }
-  .categories-list::-webkit-scrollbar-thumb { background: rgba(22,143,4,0.3); border-radius: 4px; }
-  .category-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.5); border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12px; color: #334155; cursor: pointer; transition: all 0.5s; text-align: left; font-weight: 600; }
-  .category-btn:hover { border-color: #168f04; color: #168f04; background: rgba(22,143,4,0.06); padding-left: 18px; }
-  .category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; font-weight: 700; }
-  .info-panel { position: absolute; left: 340px; bottom: 4px; z-index: 15; background: rgb(255, 255, 255); backdrop-filter: blur(20px); color: #1a1a1a; padding: 8px 13px; border-radius: 16px; font-size: 13px; font-weight: 600; border: 1px solid rgba(18, 131, 0, 0.447); display: flex; align-items: center; gap: 5px; animation: slideUp 0.5s; }
-  .category-badge { background: rgba(22,143,4,0.12); color: #168f04; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-  .map-controls-right { position: absolute; top: 330px; right: 10px; z-index: 20; display: flex; flex-direction: column; gap: 12px; pointer-events: none; align-items: center; }
-  .map-controls-right * { pointer-events: auto; }
-  .layer-switcher { display: flex; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); padding: 7px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(22,143,4,0.15); }
-  .layer-btn { width: 40px; height: 40px; border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; color: #64748b; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; }
-  .layer-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; }
-  .layer-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 6px 20px rgba(22,143,4,0.35); }
-  .geo-btn { width: 43px; height: 43px; border: 2px solid #e2e8f0; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); color: #64748b; font-size: 18px; border-radius: 12px; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-  .geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
-  .geo-btn:active:not(:disabled) { transform: scale(0.96); }
-  .geo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-  .add-object-btn {
-    width: 43px; height: 43px;
-    border: 2px solid #e2e8f0;
-    background: linear-gradient(135deg, #168f04, #007306);
-    color: white;
-    font-size: 18px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.5s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .add-object-btn:hover:not(:disabled) {
-    transform: scale(1.05);
-    box-shadow: 0 8px 24px rgba(22,143,4,0.45);
-  }
-  .add-object-btn.active {
-    background: linear-gradient(135deg, #dc2626, #b91c1c);
-    border-color: #dc2626;
-    box-shadow: 0 4px 16px rgba(220,38,38,0.3);
-  }
-  .add-object-btn.active:hover {
-    box-shadow: 0 8px 24px rgba(220,38,38,0.45);
-  }
-
-  .add-mode-hint {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 25;
-    background: rgba(22, 143, 4, 0.95);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 600;
-    font-size: 15px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-    animation: slideDown 0.5s;
-  }
-  .hint-close {
-    background: rgba(255,255,255,0.2);
-    border: none;
-    color: white;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    margin-left: 8px;
-  }
-
-  .add-confirm-popup {
-    position: absolute;
-    z-index: 30;
-    pointer-events: none;
-  }
-  .add-confirm-popup * { pointer-events: auto; }
-  .confirm-content {
-    background: white;
-    border-radius: 12px;
-    padding: 14px 18px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.418);
-    border: 1px solid rgba(22,143,4,0.2);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #1a1a1a;
-    min-width: 220px;
-  }
-  .confirm-content i {
-    font-size: 18px;
-    color: #168f04;
-  }
-  .confirm-actions {
-    display: flex;
-    gap: 8px;
-    margin-left: auto;
-  }
-  .confirm-btn {
-    padding: 6px 14px;
-    border: none;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.5s;
-  }
-  .confirm-btn.cancel {
-    background: #f1f5f9;
-    color: #64748b;
-  }
-  .confirm-btn.cancel:hover {
-    background: #e2e8f0;
-    color: #475569;
-  }
-  .confirm-btn.confirm {
-    background: linear-gradient(135deg, #168f04, #007306);
-    color: white;
-  }
-
-  .loading-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 25; background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); padding: 18px 32px; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 14px; color: #1a1a1a; font-weight: 600; border: 1px solid rgba(22,143,4,0.2); }
-  .spinner-icon { font-size: 22px; color: #168f04; }
-  .error-overlay, .success-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 14px 22px; border-radius: 14px; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid; animation: slideDown 0.4s; max-width: 400px; }
-  .error-overlay { background: rgba(254,242,242,0.95); border-color: #fecaca; color: #dc2626; }
-  .success-overlay { background: rgba(220,252,231,0.95); border-color: #86efac; color: #16a34a; }
-  .close-btn { background: none; border: none; color: inherit; font-size: 16px; cursor: pointer; padding: 4px; margin-left: 8px; border-radius: 8px; transition: all 0.2s; display: flex; align-items: center; }
-  .close-btn:hover { background: rgba(0,0,0,0.08); transform: scale(1.1); }
-  .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
-  .fade-enter-from, .fade-leave-to { opacity: 0; }
-  .fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.5s; }
-  .fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-10px); }
-  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
-  @media (max-width: 768px) {
-    .sidebar { width: 260px; left: 12px; top: 12px; bottom: 90px; }
-    .info-panel { left: 12px; bottom: 12px; flex-wrap: wrap; gap: 8px; }
-    .map-controls-right { top: 12px; right: 12px; gap: 10px; }
-    .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
-    .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
-  }
-
-  .categories-section {
-  flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+
+  pointer-events: none;
 }
+.sidebar * { pointer-events: auto; box-sizing: border-box; }
+.sidebar-section { background: rgb(255, 255, 255); backdrop-filter: blur(20px); border-radius: 20px; padding: 18px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 1px solid rgba(10, 73, 0, 0.436); }
+.sidebar-label { display: block; font-size: 12px; font-weight: 700; color: #143200; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; padding-left: 4px; }
+:deep(.p-autocomplete) { width: 100%; }
+:deep(.p-autocomplete .p-inputtext) { font-size: 13px; padding: 11px 14px; border-radius: 12px; border: 2px solid #e2e8f0; transition: all 0.5s; background: rgba(255,255,255,0.9); }
+:deep(.p-autocomplete .p-inputtext:focus) { border-color: #168f04; box-shadow: 0 0 0 4px rgba(22,143,4,0.12); outline: none; background: #fff; }
+:deep(.p-autocomplete-panel) { border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); border: 1px solid rgba(22,143,4,0.15); }
+:deep(.p-autocomplete-item) { font-size: 13px; padding: 12px 16px; cursor: pointer; transition: all 0.5s; }
+:deep(.p-autocomplete-item:hover) { background: rgba(22,143,4,0.08); color: #168f04; padding-left: 20px; }
+:deep(.p-autocomplete-item.p-highlight) { background: linear-gradient(135deg, #168f04, #007306); color: #fff; }
+.top-categories { display: flex; flex-direction: column; gap: 8px; }
+.top-category-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: rgba(255,255,255,0.6); border: 2px solid #e2e8f0; border-radius: 12px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; transition: all 0.3s; text-align: left; }
+.top-category-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; transform: translateX(4px); }
+.top-category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 4px 16px rgba(22,143,4,0.3); }
+.top-category-btn .rank { background: rgba(22,143,4,0.15); color: #168f04; font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 20px; min-width: 32px; text-align: center; }
+.top-category-btn.active .rank { background: rgba(255,255,255,0.25); color: #fff; }
+
 
 .categories-list {
-  flex: 1; 
+  flex: 1;
   overflow-y: auto;
 
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 
-  padding-right: 4px;
+  padding-right: 6px;
 }
-  </style>
+
+
+  .categories-list::-webkit-scrollbar { width: 4px; }
+.categories-list::-webkit-scrollbar-thumb { background: rgba(22,143,4,0.3); border-radius: 4px; }
+.category-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.5); border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12px; color: #334155; cursor: pointer; transition: all 0.5s; text-align: left; font-weight: 600; }
+.category-btn:hover { border-color: #168f04; color: #168f04; background: rgba(22,143,4,0.06); padding-left: 18px; }
+.category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; font-weight: 700; }
+.info-panel { position: absolute; left: 340px; bottom: 4px; z-index: 15; background: rgb(255, 255, 255); backdrop-filter: blur(20px); color: #1a1a1a; padding: 8px 13px; border-radius: 16px; font-size: 13px; font-weight: 600; border: 1px solid rgba(18, 131, 0, 0.447); display: flex; align-items: center; gap: 5px; animation: slideUp 0.5s; }
+.category-badge { background: rgba(22,143,4,0.12); color: #168f04; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.map-controls-right { position: absolute; top: 330px; right: 10px; z-index: 20; display: flex; flex-direction: column; gap: 12px; pointer-events: none; align-items: center; }
+.map-controls-right * { pointer-events: auto; }
+.layer-switcher { display: flex; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); padding: 7px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(22,143,4,0.15); }
+.layer-btn { width: 40px; height: 40px; border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; color: #64748b; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; }
+.layer-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; }
+.layer-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 6px 20px rgba(22,143,4,0.35); }
+.geo-btn { width: 43px; height: 43px; border: 2px solid #e2e8f0; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); color: #64748b; font-size: 18px; border-radius: 12px; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
+.geo-btn:active:not(:disabled) { transform: scale(0.96); }
+.geo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.add-object-btn {
+  width: 43px; height: 43px;
+  border: 2px solid #e2e8f0;
+  background: linear-gradient(135deg, #168f04, #007306);
+  color: white;
+  font-size: 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.5s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.add-object-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 8px 24px rgba(22,143,4,0.45);
+}
+.add-object-btn.active {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border-color: #dc2626;
+  box-shadow: 0 4px 16px rgba(220,38,38,0.3);
+}
+.add-object-btn.active:hover {
+  box-shadow: 0 8px 24px rgba(220,38,38,0.45);
+}
+
+.add-mode-hint {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  background: rgba(22, 143, 4, 0.95);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  animation: slideDown 0.5s;
+}
+.hint-close {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  margin-left: 8px;
+}
+
+.add-confirm-popup {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+}
+.add-confirm-popup * { pointer-events: auto; }
+.confirm-content {
+  background: white;
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.418);
+  border: 1px solid rgba(22,143,4,0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+  min-width: 220px;
+}
+.confirm-content i {
+  font-size: 18px;
+  color: #168f04;
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.confirm-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.5s;
+}
+.confirm-btn.cancel {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.confirm-btn.cancel:hover {
+  background: #e2e8f0;
+  color: #475569;
+}
+.confirm-btn.confirm {
+  background: linear-gradient(135deg, #168f04, #007306);
+  color: white;
+}
+
+.loading-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 25; background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); padding: 18px 32px; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 14px; color: #1a1a1a; font-weight: 600; border: 1px solid rgba(22,143,4,0.2); }
+.spinner-icon { font-size: 22px; color: #168f04; }
+.error-overlay, .success-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 14px 22px; border-radius: 14px; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid; animation: slideDown 0.4s; max-width: 400px; }
+.error-overlay { background: rgba(254,242,242,0.95); border-color: #fecaca; color: #dc2626; }
+.success-overlay { background: rgba(220,252,231,0.95); border-color: #86efac; color: #16a34a; }
+.close-btn { background: none; border: none; color: inherit; font-size: 16px; cursor: pointer; padding: 4px; margin-left: 8px; border-radius: 8px; transition: all 0.2s; display: flex; align-items: center; }
+.close-btn:hover { background: rgba(0,0,0,0.08); transform: scale(1.1); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.5s; }
+.fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-10px); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (max-width: 768px) {
+  .sidebar { width: 260px; left: 12px; top: 12px; bottom: 90px; }
+  .info-panel { left: 12px; bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .map-controls-right { top: 12px; right: 12px; gap: 10px; }
+  .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
+  .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
+}
+
+.categories-section {
+flex: 1;
+display: flex;
+flex-direction: column;
+}
+
+.categories-list {
+flex: 1; 
+overflow-y: auto;
+
+display: flex;
+flex-direction: column;
+gap: 6px;
+
+padding-right: 4px;
+}
+</style>

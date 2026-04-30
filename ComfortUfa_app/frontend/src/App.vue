@@ -16,12 +16,10 @@
   <div id="app">
     <AppHeader />
     
-    <!-- Основной контент (меняется через router-view) -->
     <main class="main-content" :class="{ 'map-page': $route.path === '/map'}">
       <router-view />
     </main>
     
-    <!-- Подключаем футер -->
     <AppFooter />
   </div>
 </template>
@@ -35,40 +33,29 @@
     -ms-overflow-style: none;
   }
 
-  /* ::-webkit-scrollbar {
-    width: 0;
-    background: transparent;
-  } */
-
   #app {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: #1a1a1a;
-    
-    /* 👇 ФОН ПЕРЕНОСИМ СЮДА. Он будет на весь экран, включая область под футером */
     background: url('@/assets/backgr1.jpg') center/cover no-repeat fixed;
   }
   
-  /* Плавная прокрутка */
   html {
     scroll-behavior: smooth;
   }
 
-  /* Убираем стандартные отступы у ссылок */
   a {
     text-decoration: none;
     color: inherit;
   }
 
-  /* Убираем стандартные стили кнопок */
   button {
     font-family: inherit;
   }
 
   .main-content {
-    /* padding: 140px 20px 20px; */
     flex: 1;
     padding: 20px;
   }

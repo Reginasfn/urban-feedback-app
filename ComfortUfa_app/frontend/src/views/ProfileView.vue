@@ -1,14 +1,14 @@
 <template>
   <div class="profile-page">
     
-    <!-- Заголовок страницы -->
+    <!-- Заголовок -->
     <div class="profile-header">
       <div class="container">
         <h1 class="page-title">Личный профиль</h1>
       </div>
     </div>
 
-    <!-- Основной контент -->
+    <!-- Основное -->
     <div class="container">
       <div class="profile-grid">
         
@@ -37,11 +37,6 @@
               <div class="profile-field">
                 <label>Телефон</label>
                 <p class="field-value">{{ profile.phone || 'Не указан' }}</p>
-              </div>
-              
-              <div class="profile-field">
-                <label>Роль</label>
-                <Tag :value="profile.role_name || 'user'" severity="success" />
               </div>
               
               <div class="profile-field">
@@ -104,7 +99,6 @@
                   v-model="form.current_password"
                   toggleMask
                   :feedback="false"
-                  placeholder="••••••••"
                 />
                 <small v-if="errors.current_password" class="p-error">{{ errors.current_password }}</small>
               </div>
@@ -115,10 +109,10 @@
                   id="new_password"
                   v-model="form.new_password"
                   toggleMask
+                  promptLabel="Введите пароль"
                   weakLabel="Слабый"
                   mediumLabel="Средний"
                   strongLabel="Сильный"
-                  placeholder="Минимум 6 символов"
                 />
                 <small class="hint-text">Оставьте пустым, если не меняете пароль</small>
               </div>
@@ -141,7 +135,7 @@
           </template>
         </Card>
 
-        <!-- Боковая панель: статистика и действия -->
+        <!-- Боковая панель справа: статистика и действия -->
         <div class="profile-sidebar" style="display: flex; flex-direction: column; gap: 10px;">
           
           <!-- Статистика пользователя -->
@@ -237,7 +231,7 @@ export default {
   },
   
   async mounted() {
-    // 🔐 Проверка авторизации
+    // Проверка авторизации
     const token = localStorage.getItem('auth_token')
     if (!token) {
       this.$router.push('/auth')
@@ -251,7 +245,7 @@ export default {
   },
   
   methods: {
-    // 👇 Загрузка данных профиля
+    // Загрузка данных профиля
     async fetchProfile() {
       try {
         this.loading = true
@@ -309,7 +303,7 @@ export default {
       }
     },
     
-    // 👇 Начало редактирования
+    // Начало редактирования
     startEditing() {
       this.isEditing = true
       this.errors = {}
@@ -317,7 +311,7 @@ export default {
       this.form.new_password = ''
     },
     
-    // 👇 Отмена редактирования
+    // Отмена редактирования
     cancelEditing() {
       this.isEditing = false
       this.errors = {}
@@ -330,7 +324,7 @@ export default {
       }
     },
     
-    // 👇 Валидация формы
+    // Валидация формы
     validateForm() {
       this.errors = {}
       
@@ -480,7 +474,7 @@ export default {
       this.$router.push('/')
     },
     
-    // 👇 Форматирование даты
+    // Форматирование даты
     formatDate(dateString) {
       if (!dateString) return '—'
       return new Date(dateString).toLocaleDateString('ru-RU', {
@@ -555,7 +549,7 @@ export default {
   gap: 10px;
   font-size: 18px;
   font-weight: 700;
-  color: #1e3a5f;
+  color: #014f00;
 }
 
 .card-title i {

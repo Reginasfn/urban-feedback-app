@@ -82,7 +82,7 @@ export default {
   line-height: 1.6;
   max-width: 800px;
   margin: 0 auto;
-  padding: 60px 20px 100px;
+  padding: 20px 0px 100px;
 }
 
 .title {
@@ -156,12 +156,12 @@ export default {
   border: 2px solid #168f04;
   border-radius: 8px;
   padding: 14px 28px;
-  transition: all 0.25s ease;
+  transition: all 0.5s ease;
 }
 
 .link .pi {
   font-size: 14px;
-  transition: transform 0.25s ease;
+  transition: transform 0.5s ease;
 }
 
 .link:hover {
@@ -172,28 +172,5 @@ export default {
 
 .link:hover .pi {
   transform: translateX(4px);
-}
-
-@media (max-width: 768px) {
-  .about-simple {
-    padding: 100px 16px 40px;
-  }
-
-  .title {
-    font-size: 32px;
-  }
-
-  .section-title {
-    font-size: 18px;
-  }
-
-  .text {
-    font-size: 16px;
-  }
-
-  .link {
-    font-size: 16px;
-    padding: 12px 24px;
-  }
 }
 </style>
