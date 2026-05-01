@@ -170,13 +170,15 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import axios from 'axios'
+// import axios from 'axios'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
 
 import { useGeolocation } from '@/composables/useGeolocation'
 import { useMapLayers, MAP_LAYERS } from '@/composables/useMapLayers'
+
+import api from '@/services/api' 
 
 import { 
   isAuthenticated as checkAuth,
@@ -362,11 +364,8 @@ const searchCategories = async (event) => {
   
   searchTimeout = setTimeout(async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/objects', {
-        params: { 
-          search: query, 
-          limit: 15 
-        }
+      const response = await api.get('/api/objects', {
+        params: { search: query, limit: 15 }
       })
       
       searchResults.value = response.data.map(obj => ({
@@ -389,7 +388,9 @@ const fetchObjectRating = async (objectId) => {
       return ratingsCache.value[objectId]
     }
     
-    const response = await axios.get(`http://localhost:8000/reviews/object/${objectId}?limit=100`)
+    const response = await api.get(`/reviews/object/${objectId}`, {
+      params: { limit: 100 }
+    })
     const reviews = response.data.reviews || []
     
     if (reviews.length === 0) {
@@ -717,7 +718,10 @@ const loadObjects = async (type) => {
     objectsCount.value = 0
 
     try {
-        const response = await axios.get('http://localhost:8000/api/objects', { params: { type, limit: 1000 } })
+        const response = await api.get('/api/objects', { 
+          params: { type, limit: 1000 } 
+        })
+
         const objects = response.data || []
         
         if (objects.length === 0) { 
@@ -838,11 +842,10 @@ const handleReviewSubmit = async (payload) => {
       formData.append('photo', payload.photo)
     }
     
-    const token = localStorage.getItem('auth_token')
-    const response = await axios.post('http://localhost:8000/reviews/', formData, {
-      headers: { 
-        'Authorization': `Bearer ${token}`
-      }
+    // const token = localStorage.getItem('auth_token')
+
+    const response = await api.post('/reviews/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
     })
     
     console.log('[Review] Ответ сервера:', response.data)
