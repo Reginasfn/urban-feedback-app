@@ -170,15 +170,18 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-// import axios from 'axios'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
 
 import { useGeolocation } from '@/composables/useGeolocation'
 import { useMapLayers, MAP_LAYERS } from '@/composables/useMapLayers'
+import { useAutoClear } from '@/composables/useAutoClear'
+
+import { createBalloonContent } from '@/utils/map/balloonRenderer'
 
 import api from '@/services/api' 
+import axios from 'axios'
 
 import { 
   isAuthenticated as checkAuth,
@@ -187,8 +190,10 @@ import {
 
 const mapContainer = ref(null)
 const loading = ref(false)
-const error = ref(null)
-const success = ref(null)
+
+const { value: error, set: setError } = useAutoClear(null, 3000)
+const { value: success, set: setSuccess } = useAutoClear(null, 2500) 
+
 const selectedCategory = ref(null)
 const objectsCount = ref(0)
 const debugInfo = ref('')
@@ -214,11 +219,6 @@ const {
   destroy: destroyGeolocation,
   removeUserMarker: clearUserMarker
 } = useGeolocation()
-
-// Синхронизация состояний с основными переменными компонента
-watch(geoLoading, (val) => { loading.value = val })
-watch(geoError, (val) => { if (val) error.value = val })
-watch(geoSuccess, (val) => { if (val) success.value = val })
 
 // ===== ДАННЫЕ ДЛЯ ОТЗЫВОВ И ИЗБРАННОГО =====
 const bookmarkedObjects = ref(new Set())
@@ -290,13 +290,13 @@ const {
   switchLayer: changeLayer,
   isLayerActive,
 } = useMapLayers({
-  onSuccess: (msg) => { success.value = msg; setTimeout(() => success.value = null, 1500) },
-  onError: (msg) => { error.value = msg; setTimeout(() => error.value = null, 3000) }
+  onSuccess: (msg) => setSuccess(msg, 1500),
+  onError: (msg) => setError(msg, 3000)
 })
 
 // ===== ПЕРЕКЛЮЧЕНИЕ СЛОЁВ =====
 const handleLayerSwitch = async (layerId) => {
-  await changeLayer(layerId, map)  // 👈 map передаётся здесь
+  await changeLayer(layerId, map)
 }
 
 // ===== СОЗДАНИЕ КАСТОМНОГО МАРКЕРА ПОЛЬЗОВАТЕЛЯ =====
@@ -329,26 +329,47 @@ const createCustomUserMarker = (coords) => {
     })
   }
 }
+
+const syncGeoState = () => {
+  loading.value = geoLoading.value
   
+  if (geoError.value) { 
+    setError(geoError.value, 3000)
+    geoError.value = null 
+    loading.value = false
+  }
+  
+  if (geoSuccess.value) { 
+    setSuccess(geoSuccess.value, 3000)
+    geoSuccess.value = null 
+    loading.value = false
+  }
+}
+
 // ===== ОБНОВЛЁННАЯ ФУНКЦИЯ ГЕОЛОКАЦИИ =====
 const goToMyLocation = async () => {
   if (!map) {
-    error.value = 'Карта ещё не инициализирована'
+    setError('Карта ещё не инициализирована')
     return
   }
 
   loading.value = true
-  error.value = null
   
-  await performGeolocation({
-    zoom: 18,
-    ymaps: window.ymaps,
-    mapInstance: map,
-    createMarkerFn: createCustomUserMarker,
-    onPositionReceived: ({ coords, accuracy }) => {
-      console.log(`[Geo] Позиция: ${coords}, точность: ${accuracy}м`)
-    }
-  })
+  try {
+    await performGeolocation({
+      zoom: 18,
+      ymaps: window.ymaps,
+      mapInstance: map,
+      createMarkerFn: createCustomUserMarker,
+      onPositionReceived: ({ coords, accuracy }) => {
+        console.log(`[Geo] Позиция: ${coords}, точность: ${accuracy}м`)
+      }
+    })
+    syncGeoState()
+  } finally {
+    setError('Не удалось определить местоположение')
+    loading.value = false
+  }
 }
 
 // ===== ПОИСК ОБЪЕКТОВ =====
@@ -413,8 +434,7 @@ const fetchObjectRating = async (objectId) => {
 const navigateToObject = async (obj) => {
   if (!map || !obj.coords) {
     console.error('[Navigate] Карта или координаты не найдены')
-    error.value = 'Не удалось перейти к объекту'
-    setTimeout(() => { error.value = null }, 3000)
+    setError('Не удалось перейти к объекту')
     return
   }
   
@@ -441,14 +461,22 @@ const navigateToObject = async (obj) => {
     const placemark = new window.ymaps.Placemark(
       obj.coords,
       { 
-        balloonContent: createBalloonContent({
-          id_object: obj.id_object,
-          name: obj.name,
-          address: obj.address,
-          type_name: obj.type_name,
-          rating: rating.avg,
-          ratingCount: rating.count
-        }, 0, obj.type_name),
+        balloonContent: createBalloonContent(
+          {
+            id_object: obj.id_object,
+            name: obj.name,
+            address: obj.address,
+            type_name: obj.type_name,
+            rating: rating.avg,
+            ratingCount: rating.count
+          }, 
+          0, 
+          obj.type_name,
+          { 
+            isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
+            iconClass: getCategoryIcon(obj.type_name) 
+          }
+        ),
         hintContent: obj.name || 'Объект'
       },
       { 
@@ -477,86 +505,12 @@ const navigateToObject = async (obj) => {
       }
     }, 300)
     
-    success.value = `Найден: ${obj.name || 'Объект'}`
-    setTimeout(() => { success.value = null }, 2500)
+    setSuccess(`Найден: ${obj.name || 'Объект'}`)
     
   } catch (err) {
     console.error('[Navigate] Ошибка:', err)
-    error.value = 'Ошибка при переходе к объекту'
-    setTimeout(() => { error.value = null }, 3000)
+    setError('Ошибка при переходе к объекту')
   }
-}
-
-// ===== ГЕНЕРАЦИЯ КОНТЕНТА БАЛУНА =====
-const createBalloonContent = (obj, index, type) => {
-  const isBookmarked = bookmarkedObjects.value.has(obj.id_object)
-  const displayName = obj.name || `Объект #${obj.id_object || (index + 1)}`
-  const displayAddress = obj.address || 'Адрес не указан'
-  const displayType = obj.type_name || type || 'Не указан'
-  
-  const ratingStars = obj.rating ? '★'.repeat(Math.round(obj.rating)) + '☆'.repeat(5 - Math.round(obj.rating)) : 'Нет оценок'
-  const ratingText = obj.rating ? `${obj.rating}/5 (${obj.ratingCount || 0})` : ''
-  
-  return `
-    <div class="object-card">
-      <button class="bookmark-btn ${isBookmarked ? 'active' : ''}" 
-              onclick="window.__toggleBookmark?.('${obj.id_object}', this)"
-              title="${isBookmarked ? 'Убрать из избранного' : 'Добавить в избранное'}">
-        <i class="pi ${isBookmarked ? 'pi-bookmark-fill' : 'pi-bookmark'}"></i>
-      </button>
-      <div class="object-card-header">
-        <i class="pi ${getCategoryIcon(displayType)}"></i>
-        <h4>${displayName}</h4>
-      </div>
-      <p class="object-address"><i class="pi pi-map-marker"></i> ${displayAddress}</p>
-      
-      <!-- Рейтинг -->
-      <div class="object-rating">
-        <span class="stars">${ratingStars}</span>
-        ${ratingText ? `<span class="rating-text">${ratingText}</span>` : ''}
-      </div>
-      
-      <div class="object-card-footer">
-        <span class="object-type">${displayType}</span>
-        <button class="review-btn" onclick="window.__openReview?.('${obj.id_object}', '${displayName.replace(/'/g, "\\'")}', '${displayType}')">
-          <i class="pi pi-pencil"></i> Добавить отзыв
-        </button>
-      </div>
-    </div>
-    <style>
-      .object-card { font-family: Inter, system-ui, sans-serif; min-width: 280px; background: linear-gradient(135deg, #fff 0%, #f8fafc 100%); border-radius: 16px; padding: 16px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid rgba(22,143,4,0.15); position: relative; }
-      .bookmark-btn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border: none; background: rgba(22,143,4,0.1); color: #168f04; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; z-index: 10; }
-      .bookmark-btn:hover { background: rgba(22,143,4,0.2); transform: scale(1.1); }
-      .bookmark-btn.active { background: #168f04; color: white; }
-      .object-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(22,143,4,0.1); }
-      .object-card-header i { font-size: 20px; color: #168f04; background: rgba(22,143,4,0.1); padding: 8px; border-radius: 10px; }
-      .object-card-header h4 { margin: 0; font-size: 16px; font-weight: 700; color: #1a1a1a; }
-      .object-address { margin: 0 0 12px 0; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
-      .object-rating { 
-        display: flex; 
-        align-items: center; 
-        gap: 8px; 
-        margin-bottom: 12px; 
-        padding: 8px 12px; 
-        background: rgba(22,143,4,0.08); 
-        border-radius: 8px; 
-      }
-      .object-rating .stars { 
-        color: #fbbf24; 
-        font-size: 14px; 
-        letter-spacing: 2px; 
-      }
-      .object-rating .rating-text { 
-        font-size: 12px; 
-        font-weight: 600; 
-        color: #168f04; 
-      }
-      .object-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      .object-type { font-size: 11px; font-weight: 600; color: #168f04; background: rgba(22,143,4,0.1); padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
-      .review-btn { display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #168f04 0%, #007306 100%); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 14px rgba(22,143,4,0.3); }
-      .review-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22,143,4,0.45); }
-    </style>
-  `
 }
 
 // ===== ОБРАБОТКА НАЖАТИЙ В ПОИСКЕ =====
@@ -662,24 +616,23 @@ const createMapInstance = () => {
                 map.behaviors.disable('dblClickZoom')
                 
                 map.events.add('click', (e) => {
-                    if (isAddingMode.value) {
-                        handleMapClick(e)
-                    }
+                  if (isAddingMode.value) {
+                      handleMapClick(e)
+                      return 
+                  }
+
+                  const target = e.get('target')
+                  
+                  if (!target?.options?.get('isOurObject') && target !== clusterer) {
+                      e.stopPropagation()
+                      return false
+                  }
                 })
                 
                 map.events.add('balloonopen', (e) => {
                     const target = e.get('target')
                     if (!target?.options?.get('isOurObject')) {
                         map.balloon.close()
-                        e.stopPropagation()
-                        return false
-                    }
-                })
-                
-                map.events.add('click', (e) => {
-                    const target = e.get('target')
-                    if (isAddingMode.value) return
-                    if (!target?.options?.get('isOurObject') && target !== clusterer) {
                         e.stopPropagation()
                         return false
                     }
@@ -705,16 +658,19 @@ const createMapInstance = () => {
 
 // ===== ЗАГРУЗКА ОБЪЕКТОВ ПО КАТЕГОРИИ =====
 const loadObjects = async (type) => {
+  
     if (!map || !clusterer) { 
-      error.value = 'Карта ещё не загрузилась'; 
+      setError('Карта ещё не загрузилась')
       return 
     }
+
+    if (clusterer) {
+      clusterer.removeAll();
+    }
     
-    loading.value = true; 
-    error.value = null; 
-    success.value = null
-    selectedCategory.value = type; 
-    clusterer.removeAll(); 
+    loading.value = true
+    selectedCategory.value = type
+    clusterer.removeAll()
     objectsCount.value = 0
 
     try {
@@ -725,8 +681,7 @@ const loadObjects = async (type) => {
         const objects = response.data || []
         
         if (objects.length === 0) { 
-          error.value = `Объектов типа "${type}" не найдено`; 
-          loading.value = false; 
+          setError(`Объектов типа "${type}" не найдено`)
           return 
         }
         
@@ -736,11 +691,15 @@ const loadObjects = async (type) => {
             const placemark = new window.ymaps.Placemark(
                 obj.coords,
                 { 
-                    balloonContent: createBalloonContent({
-                        ...obj,
-                        rating: null,
-                        ratingCount: 0
-                    }, index, type), 
+                    balloonContent: createBalloonContent(
+                        { ...obj, rating: null, ratingCount: 0 }, 
+                        index, 
+                        type,
+                        { 
+                          isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
+                          iconClass: getCategoryIcon(type) 
+                        }
+                    ), 
                     hintContent: obj.name || type 
                 },
                 { 
@@ -757,11 +716,15 @@ const loadObjects = async (type) => {
                 if (objectId && !ratingsCache.value[objectId]) {
                     const rating = await fetchObjectRating(objectId)
                     const objData = placemark.properties.get()
-                    placemark.properties.set('balloonContent', createBalloonContent({
-                        ...objData,
-                        rating: rating.avg,
-                        ratingCount: rating.count
-                    }, 0, placemark.properties.get('objectType')))
+                    placemark.properties.set('balloonContent', createBalloonContent(
+                        { ...objData, rating: rating.avg, ratingCount: rating.count }, 
+                        0, 
+                        placemark.properties.get('objectType'),
+                        { 
+                          isBookmarked: bookmarkedObjects.value.has(objectId), 
+                          iconClass: getCategoryIcon(placemark.properties.get('objectType')) 
+                        }
+                    ))
                 }
             })
             return placemark
@@ -769,10 +732,10 @@ const loadObjects = async (type) => {
         
         clusterer.add(placemarks)
         objectsCount.value = placemarks.length
-        success.value = `Загружено ${placemarks.length} объектов`
-        setTimeout(() => { success.value = null }, 1500)
+        setSuccess(`Загружено ${placemarks.length} объектов`)
+        
     } catch (err) {
-      error.value = err.response?.data?.detail || `Ошибка: ${err.message}`
+      setError(err.response?.data?.detail || `Ошибка: ${err.message}`)
     } finally { 
       loading.value = false 
     }
@@ -781,8 +744,7 @@ const loadObjects = async (type) => {
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ BALLOON =====
 window.__toggleBookmark = (objectId, btnElement) => {
     if (!isAuthenticated.value) {
-        error.value = 'Пожалуйста, авторизуйтесь, чтобы добавлять в избранное'
-        setTimeout(() => { error.value = null }, 3000)
+        setError('Пожалуйста, авторизуйтесь, чтобы добавлять в избранное')
         return
     }
     if (bookmarkedObjects.value.has(objectId)) {
@@ -792,7 +754,7 @@ window.__toggleBookmark = (objectId, btnElement) => {
             btnElement.querySelector('i').className = 'pi pi-bookmark'
             btnElement.title = 'Добавить в избранное' 
         }
-        success.value = 'Убрано из избранного'
+        setSuccess('Убрано из избранного')
     } else {
         bookmarkedObjects.value.add(objectId)
         if (btnElement) { 
@@ -800,9 +762,8 @@ window.__toggleBookmark = (objectId, btnElement) => {
             btnElement.querySelector('i').className = 'pi pi-bookmark-fill'
             btnElement.title = 'Убрать из избранного' 
         }
-        success.value = 'Добавлено в избранное'
+        setSuccess('Добавлено в избранное')
     }
-    setTimeout(() => { success.value = null }, 2000)
 }
 
 window.__openReview = (objectId, objectName, objectType) => {
@@ -811,8 +772,7 @@ window.__openReview = (objectId, objectName, objectType) => {
   
   if (!isAuthenticated.value) {
     console.warn('[__openReview] Пользователь не авторизован!')
-    error.value = 'Необходимо авторизоваться, чтобы оставить отзыв'
-    setTimeout(() => { error.value = null }, 3000)
+    setError('Необходимо авторизоваться, чтобы оставить отзыв')
     return
   }
   
@@ -821,8 +781,6 @@ window.__openReview = (objectId, objectName, objectType) => {
     name: objectName, 
     type: objectType 
   }
-  console.log('[__openReview] selectedObjectForReview:', selectedObjectForReview.value)
-  console.log('[__openReview] showReviewModal = true')
   
   showReviewModal.value = true
 }
@@ -841,8 +799,6 @@ const handleReviewSubmit = async (payload) => {
     if (payload.photo) {
       formData.append('photo', payload.photo)
     }
-    
-    // const token = localStorage.getItem('auth_token')
 
     const response = await api.post('/reviews/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
@@ -857,19 +813,18 @@ const handleReviewSubmit = async (payload) => {
       await loadObjects(selectedCategory.value)
     }
     
-    success.value = 'Отзыв успешно добавлен!'
+    setSuccess('Отзыв успешно добавлен!')
+    
   } catch (err) {
     console.error('[Review] Ошибка отправки:', err)
-    error.value = err.response?.data?.detail || err.message || 'Не удалось отправить отзыв'
+    setError(err.response?.data?.detail || err.message || 'Не удалось отправить отзыв')
   }
   
   showReviewModal.value = false
-  setTimeout(() => { success.value = null }, 2500)
 }
 
 const handleReviewError = ({ message }) => {
-  error.value = message
-  setTimeout(() => { error.value = null }, 3000)
+  setError(message)
 }
 
 const handleReviewCancel = () => { console.log('[ReviewModal] Отменено') }
@@ -890,8 +845,7 @@ watch(isAddingMode, (newValue) => {
 
 const toggleAddMode = () => {
   if (!isAuthenticated.value) {
-    error.value = 'Необходимо авторизоваться, чтобы добавлять объекты'
-    setTimeout(() => { error.value = null }, 3000)
+    setError('Необходимо авторизоваться, чтобы добавлять объекты')
     return
   }
   isAddingMode.value = !isAddingMode.value
@@ -939,8 +893,7 @@ const handleMapClick = async (e) => {
   }
   
   if (address) {
-    success.value = `Адрес: ${address}`
-    setTimeout(() => { success.value = null }, 4000)
+    setSuccess(`Адрес: ${address}`, 4000)
   }
   showAddConfirm.value = true
 }
@@ -953,8 +906,7 @@ const cancelAddObject = () => {
 
 const confirmAddObject = async () => {
   if (!pendingObjectCoords.value || !Array.isArray(pendingObjectCoords.value)) {
-    error.value = 'Координаты не определены'
-    setTimeout(() => { error.value = null }, 3000)
+    setError('Координаты не определены')
     return
   }
   showAddConfirm.value = false
@@ -971,7 +923,15 @@ const handleObjectSubmit = async (payload) => {
     const newPlacemark = new window.ymaps.Placemark(
       payload.coords,
       { 
-        balloonContent: createBalloonContent({ ...payload, id_object: `temp_${Date.now()}`, rating: null, ratingCount: 0 }, 0, payload.type),
+        balloonContent: createBalloonContent(
+          { ...payload, id_object: `temp_${Date.now()}`, rating: null, ratingCount: 0 }, 
+          0, 
+          payload.type,
+          { 
+            isBookmarked: bookmarkedObjects.value.has(`temp_${Date.now()}`), 
+            iconClass: getCategoryIcon(payload.type) 
+          }
+        ),
         hintContent: payload.name 
       },
       { 
@@ -982,13 +942,12 @@ const handleObjectSubmit = async (payload) => {
     )
     if (clusterer) clusterer.add(newPlacemark)
     else if (map) map.geoObjects.add(newPlacemark)
-    success.value = `Объект "${payload.name}" добавлен!`
-    setTimeout(() => { success.value = null }, 2500)
+    setSuccess(`Объект "${payload.name}" добавлен!`)
     showObjectModal.value = false
     isAddingMode.value = false
   } catch (err) {
     console.error('[ObjectSubmit] Ошибка:', err)
-    error.value = 'Не удалось добавить объект. Попробуйте позже.'
+    setError('Не удалось добавить объект. Попробуйте позже.')
   } finally {
     loading.value = false
   }
@@ -1001,8 +960,7 @@ const handleObjectCancel = () => {
 }
 
 const handleObjectError = ({ message }) => {
-  error.value = message
-  setTimeout(() => { error.value = null }, 3000)
+  setError(message)
 }
 
 // ===== ХУКИ ЖИЗНЕННОГО ЦИКЛА =====
@@ -1016,39 +974,34 @@ onMounted(async () => {
     await initMap()
     if (categories.length > 0) await loadObjects(categories[0])
   } catch (err) {
-    error.value = `Ошибка инициализации: ${err.message}`
+    setError(`Ошибка инициализации: ${err.message}`)
   }
   
-  // onBeforeUnmount внутри onMounted
-  onBeforeUnmount(() => {
+  return () => {
     window.removeEventListener('auth-change', handleAuthChange)
-  })
+  }
 })
 
 onBeforeUnmount(() => {
-  // Очистка таймеров
   clearTimeout(balloonTimeout)
   clearTimeout(removeTimeout)
   clearTimeout(searchTimeout)
   
-  // Очистка активных элементов карты
+  setError.clear?.()
+  setSuccess.clear?.()
+  
   if (activePlacemark && map?.geoObjects) {
     map.geoObjects.remove(activePlacemark)
-    activePlacemark = null
   }
-  
-  // Очистка маркера геолокации через composable
   clearUserMarker()
   destroyGeolocation()
   
-  // Уничтожение экземпляра карты
   if (map) { 
     map.destroy()
     map = null
     clusterer = null
   }
   
-  // Удаление глобальных функций
   delete window.__toggleBookmark
   delete window.__openReview
 })
@@ -1065,11 +1018,9 @@ onBeforeUnmount(() => {
   bottom: 5px;
   width: 330px;
   z-index: 15;
-
   display: flex;
   flex-direction: column;
   gap: 10px;
-
   pointer-events: none;
 }
 .sidebar * { pointer-events: auto; box-sizing: border-box; }
@@ -1088,21 +1039,15 @@ onBeforeUnmount(() => {
 .top-category-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 4px 16px rgba(22,143,4,0.3); }
 .top-category-btn .rank { background: rgba(22,143,4,0.15); color: #168f04; font-size: 10px; font-weight: 800; padding: 3px 10px; border-radius: 20px; min-width: 32px; text-align: center; }
 .top-category-btn.active .rank { background: rgba(255,255,255,0.25); color: #fff; }
-
-
 .categories-list {
   flex: 1;
   overflow-y: auto;
-
   display: flex;
   flex-direction: column;
   gap: 8px;
-
   padding-right: 6px;
 }
-
-
-  .categories-list::-webkit-scrollbar { width: 4px; }
+.categories-list::-webkit-scrollbar { width: 4px; }
 .categories-list::-webkit-scrollbar-thumb { background: rgba(22,143,4,0.3); border-radius: 4px; }
 .category-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.5); border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12px; color: #334155; cursor: pointer; transition: all 0.5s; text-align: left; font-weight: 600; }
 .category-btn:hover { border-color: #168f04; color: #168f04; background: rgba(22,143,4,0.06); padding-left: 18px; }
@@ -1119,7 +1064,6 @@ onBeforeUnmount(() => {
 .geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
 .geo-btn:active:not(:disabled) { transform: scale(0.96); }
 .geo-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
 .add-object-btn {
   width: 43px; height: 43px;
   border: 2px solid #e2e8f0;
@@ -1145,7 +1089,6 @@ onBeforeUnmount(() => {
 .add-object-btn.active:hover {
   box-shadow: 0 8px 24px rgba(220,38,38,0.45);
 }
-
 .add-mode-hint {
   position: absolute;
   top: 20px;
@@ -1179,7 +1122,6 @@ onBeforeUnmount(() => {
   font-size: 14px;
   margin-left: 8px;
 }
-
 .add-confirm-popup {
   position: absolute;
   z-index: 30;
@@ -1230,7 +1172,6 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #168f04, #007306);
   color: white;
 }
-
 .loading-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 25; background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); padding: 18px 32px; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 14px; color: #1a1a1a; font-weight: 600; border: 1px solid rgba(22,143,4,0.2); }
 .spinner-icon { font-size: 22px; color: #168f04; }
 .error-overlay, .success-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 14px 22px; border-radius: 14px; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; backdrop-filter: blur(20px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border: 1px solid; animation: slideDown 0.4s; max-width: 400px; }
@@ -1251,21 +1192,6 @@ onBeforeUnmount(() => {
   .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
   .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
 }
-
-.categories-section {
-flex: 1;
-display: flex;
-flex-direction: column;
-}
-
-.categories-list {
-flex: 1; 
-overflow-y: auto;
-
-display: flex;
-flex-direction: column;
-gap: 6px;
-
-padding-right: 4px;
-}
+.categories-section { flex: 1; display: flex; flex-direction: column; }
+.categories-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
 </style>

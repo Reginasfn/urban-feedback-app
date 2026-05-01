@@ -15,7 +15,7 @@ export function useMapLayers({ onSuccess, onError } = {}) {
   const lastSwitchTime = ref(0)
   const SWITCH_DEBOUNCE = 300
 
-  const switchLayer = async (layerId, mapInstance) => {  // 👈 mapInstance передаётся здесь
+  const switchLayer = async (layerId, mapInstance) => {
     const now = Date.now()
     if (isSwitching.value || now - lastSwitchTime.value < SWITCH_DEBOUNCE) {
       return false
@@ -33,7 +33,6 @@ export function useMapLayers({ onSuccess, onError } = {}) {
     lastSwitchTime.value = now
 
     try {
-      // 👈 Используем переданный mapInstance
       if (mapInstance && typeof mapInstance.setType === 'function') {
         mapInstance.setType(layer.yandexType)
       }

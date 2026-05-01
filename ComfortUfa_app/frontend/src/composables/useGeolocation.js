@@ -6,7 +6,6 @@ export function useGeolocation() {
   const error = ref(null)
   const success = ref(null)
   const userPosition = ref(null)
-  // ИСПОЛЬЗУЕМ shallowRef для маркера карты
   const userMarker = shallowRef(null)
   const currentMapInstance = shallowRef(null)
 
@@ -16,7 +15,6 @@ export function useGeolocation() {
       return null
     }
 
-    // Создаём маркер БЕЗ сложных опций
     return new ymaps.Placemark(
       coords,
       {
@@ -61,7 +59,6 @@ export function useGeolocation() {
       return null
     }
 
-    // Сохраняем экземпляр карты
     currentMapInstance.value = mapInstance
 
     if (!navigator.geolocation) {
@@ -73,28 +70,23 @@ export function useGeolocation() {
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // УБРАЛИ async отсюда - не нужен
           const { latitude: lat, longitude: lon, accuracy } = position.coords
           const coords = [lat, lon]
 
           userPosition.value = { lat, lon, accuracy }
 
-          // Центрируем карту
           mapInstance.setCenter(coords, zoom, {
             flying: true,
             duration: 600
           })
 
-          // Удаляем старый маркер
           removeUserMarker(mapInstance)
 
-          // Создаём новый маркер
           const markerCreator = createMarkerFn || createDefaultUserMarker
           const newMarker = markerCreator(coords, ymaps)
           
           if (newMarker) {
             userMarker.value = newMarker
-            // Добавляем маркер на карту
             mapInstance.geoObjects.add(newMarker)
           }
 
