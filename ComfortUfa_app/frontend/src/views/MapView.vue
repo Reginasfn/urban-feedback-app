@@ -55,19 +55,20 @@
 
     <!-- ===== ПРАВАЯ ПАНЕЛЬ: Слои + Геолокация + ДОБАВИТЬ ОБЪЕКТ ===== -->
     <div class="map-controls-right">
-      <!-- Переключатель слоёв -->
-      <div class="layer-switcher">
-        <button 
-          v-for="layer in mapLayers" 
-          :key="layer.id"
-          @click="switchLayer(layer.id)"
-          :class="{ active: currentLayer === layer.id }"
-          class="layer-btn"
-          :title="layer.title"
-        >
-          <i :class="layer.icon"></i>
-        </button>
-      </div>
+    <!-- Переключатель слоёв -->
+    <div class="layer-switcher">
+      <button 
+        v-for="layer in availableLayers" 
+        :key="layer.id"
+        @click="handleLayerSwitch(layer.id)"
+        :class="{ active: isLayerActive(layer.id), disabled: layerSwitching }"
+        class="layer-btn"
+        :title="layer.title"
+        :disabled="layerSwitching"
+      >
+        <i :class="layer.icon"></i>
+      </button>
+    </div>
 
       <!-- Кнопка геолокации -->
       <button 
@@ -173,7 +174,9 @@ import axios from 'axios'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
+
 import { useGeolocation } from '@/composables/useGeolocation'
+import { useMapLayers, MAP_LAYERS } from '@/composables/useMapLayers'
 
 import { 
   isAuthenticated as checkAuth,
@@ -253,12 +256,6 @@ const categories = [
     'Парк', 'Беседка', 'Остановка', 'Детская площадка'
 ]
 
-const mapLayers = [
-    { id: 'map', title: 'Схема', icon: 'pi pi-hashtag' },
-    { id: 'satellite', title: 'Спутник', icon: 'pi pi-globe' },
-    { id: 'hybrid', title: 'Гибрид', icon: 'pi pi-map' }
-]
-
 const markerConfig = {
     "Кафе": { preset: 'islands#redFoodCircleIcon' },
     "Скамейка": { preset: 'islands#brownCircleIcon' },
@@ -282,6 +279,23 @@ const categoryIcons = {
 }
 
 const getCategoryIcon = (cat) => categoryIcons[cat] || 'pi pi-map-marker'
+
+// ===== СЛОИ КАРТЫ =====
+const {
+  currentLayer: activeLayer,
+  isSwitching: layerSwitching,
+  layers: availableLayers,
+  switchLayer: changeLayer,
+  isLayerActive,
+} = useMapLayers({
+  onSuccess: (msg) => { success.value = msg; setTimeout(() => success.value = null, 1500) },
+  onError: (msg) => { error.value = msg; setTimeout(() => error.value = null, 3000) }
+})
+
+// ===== ПЕРЕКЛЮЧЕНИЕ СЛОЁВ =====
+const handleLayerSwitch = async (layerId) => {
+  await changeLayer(layerId, map)  // 👈 map передаётся здесь
+}
 
 // ===== СОЗДАНИЕ КАСТОМНОГО МАРКЕРА ПОЛЬЗОВАТЕЛЯ =====
 const createCustomUserMarker = (coords) => {
@@ -580,16 +594,6 @@ const blockDefaultObjects = (e) => {
         e.preventDefault()
         return false
     }
-}
-
-// ===== ПЕРЕКЛЮЧЕНИЕ СЛОЁВ КАРТЫ =====
-const switchLayer = (layerId) => {
-    if (!map) return
-    currentLayer.value = layerId
-    const layerMap = { 'map': 'yandex#map', 'satellite': 'yandex#satellite', 'hybrid': 'yandex#hybrid' }
-    map.setType(layerMap[layerId])
-    success.value = `Слой: ${mapLayers.find(l => l.id === layerId)?.title}`
-    setTimeout(() => { success.value = null }, 1500)
 }
 
 // ===== ИНИЦИАЛИЗАЦИЯ КАРТЫ =====
