@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.database import engine, Base, get_db  # 👈 Импортируем Base и engine
+from api.database import engine, Base, get_db 
 from api.endpoints import objects, stats, auth, users, reviews
 from fastapi.staticfiles import StaticFiles
 
@@ -11,7 +11,6 @@ app = FastAPI(
     docs_url="/docs",
 )
 
-# 👇 ДОБАВЬ ЭТОТ БЛОК ПОСЛЕ СОЗДАНИЯ app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Твой фронтенд

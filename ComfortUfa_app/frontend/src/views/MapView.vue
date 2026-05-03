@@ -1,6 +1,5 @@
 <template>
   <div class="map-page">
-    
     <!-- ===== ЛЕВЫЙ ПЛАВАЮЩИЙ САЙДБАР ===== -->
     <div class="sidebar">
       <!-- 🔍 Поиск по названию/адресу -->
@@ -53,22 +52,22 @@
       </div>
     </Transition>
 
-    <!-- ===== ПРАВАЯ ПАНЕЛЬ: Слои + Геолокация + ДОБАВИТЬ ОБЪЕКТ ===== -->
+    <!-- ===== ПРАВАЯ ПАНЕЛЬ: Слои + Геолокация + Добавить объект ===== -->
     <div class="map-controls-right">
-    <!-- Переключатель слоёв -->
-    <div class="layer-switcher">
-      <button 
-        v-for="layer in availableLayers" 
-        :key="layer.id"
-        @click="handleLayerSwitch(layer.id)"
-        :class="{ active: isLayerActive(layer.id), disabled: layerSwitching }"
-        class="layer-btn"
-        :title="layer.title"
-        :disabled="layerSwitching"
-      >
-        <i :class="layer.icon"></i>
-      </button>
-    </div>
+      <!-- Переключатель слоёв -->
+      <div class="layer-switcher">
+        <button 
+          v-for="layer in availableLayers" 
+          :key="layer.id"
+          @click="handleLayerSwitch(layer.id)"
+          :class="{ active: isLayerActive(layer.id), disabled: layerSwitching }"
+          class="layer-btn"
+          :title="layer.title"
+          :disabled="layerSwitching"
+        >
+          <i :class="layer.icon"></i>
+        </button>
+      </div>
 
       <!-- Кнопка геолокации -->
       <button 
@@ -80,20 +79,20 @@
         <i class="pi pi-send"></i>
       </button>
 
-      <!-- 👇 КНОПКА ДОБАВЛЕНИЯ ОБЪЕКТА (только для авторизованных) -->
+      <!-- Кнопка добавления объекта (только для авторизованных) -->
       <button 
         v-if="isAuthenticated"
         class="add-object-btn" 
         :class="{ active: isAddingMode }"
-        @click="toggleAddMode"
-        :disabled="loading"
+        @click="() => toggleAddMode(isAuthenticated)"
+        :disabled="loading || isGeocoding"
         title="Добавить объект на карту"
       >
         <i class="pi" :class="isAddingMode ? 'pi-times' : 'pi-plus'"></i>
       </button>
     </div>
 
-    <!-- 👇 ПОДСКАЗКА ПРИ ДОБАВЛЕНИИ -->
+    <!-- Подсказка при добавлении -->
     <Transition name="fade-slide">
       <div v-if="isAddingMode" class="add-mode-hint">
         <i class="pi pi-map-marker"></i>
@@ -102,7 +101,7 @@
       </div>
     </Transition>
 
-    <!-- 👇 ПОДТВЕРЖДЕНИЕ ДОБАВЛЕНИЯ (маленькое всплывающее окно) -->
+    <!-- Подтверждение добавления -->
     <Transition name="fade-slide">
       <div v-if="showAddConfirm" class="add-confirm-popup" :style="confirmPosition">
         <div class="confirm-content">
@@ -118,13 +117,13 @@
 
     <!-- Индикатор загрузки -->
     <Transition name="fade">
-      <div v-if="loading" class="loading-overlay">
+      <div v-if="loading || isGeocoding" class="loading-overlay">
         <i class="pi pi-spin pi-spinner spinner-icon"></i>
-        <span>Определяем местоположение...</span>
+        <span>{{ isGeocoding ? 'Определяем адрес...' : 'Определяем местоположение...' }}</span>
       </div>
     </Transition>
 
-    <!-- Сообщение об ошибке -->
+    <!-- Сообщения об ошибке / успехе -->
     <Transition name="fade-slide">
       <div v-if="error" class="error-overlay">
         <i class="pi pi-exclamation-triangle"></i>
@@ -133,7 +132,6 @@
       </div>
     </Transition>
 
-    <!-- Сообщение об успехе -->
     <Transition name="fade-slide">
       <div v-if="success" class="success-overlay">
         <i class="pi pi-check-circle"></i>
@@ -141,7 +139,7 @@
       </div>
     </Transition>
 
-    <!-- ===== МОДАЛЬНОЕ ОКНО ОТЗЫВА ===== -->
+    <!-- Модальные окна -->
     <ReviewModal
       v-model:visible="showReviewModal"
       :selected-object="selectedObjectForReview"
@@ -152,7 +150,6 @@
       @error="handleReviewError"
     />
 
-    <!-- 👇 МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ ОБЪЕКТА -->
     <ObjectModal
       v-model:visible="showObjectModal"
       :coordinates="pendingObjectCoords"
@@ -162,31 +159,32 @@
       @error="handleObjectError"
     />
 
-    <!-- ===== КАРТА ===== -->
+    <!-- Карта -->
     <div ref="mapContainer" class="map-container"></div>
-
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, toRef } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
 
 import { useGeolocation } from '@/composables/useGeolocation'
-import { useMapLayers, MAP_LAYERS } from '@/composables/useMapLayers'
+import { useMapLayers } from '@/composables/useMapLayers'
 import { useAutoClear } from '@/composables/useAutoClear'
+import { useRatingsCache } from '@/composables/useRatingsCache'
+import { useAddObjectMode } from '@/composables/useAddObjectMode'
 
 import { createBalloonContent } from '@/utils/map/balloonRenderer'
-
 import api from '@/services/api' 
-import axios from 'axios'
+import { isAuthenticated as checkAuth } from '@/utils/auth'
 
-import { 
-  isAuthenticated as checkAuth,
-  getCurrentUser 
-} from '@/utils/auth'
+// ===== API КЛЮЧ =====
+const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
+
+// ===== ИНИЦИАЛИЗАЦИЯ COMPOSABLES =====
+const { fetch: fetchRating, invalidate: invalidateRating, clear: clearRatingsCache } = useRatingsCache()
 
 const mapContainer = ref(null)
 const loading = ref(false)
@@ -196,21 +194,12 @@ const { value: success, set: setSuccess } = useAutoClear(null, 2500)
 
 const selectedCategory = ref(null)
 const objectsCount = ref(0)
-const debugInfo = ref('')
 const isMapInitialized = ref(false)
 const searchQuery = ref('')
 const searchResults = ref([])
-const currentLayer = ref('map')
 const isAuthenticated = ref(checkAuth())
 
-// ===== СОСТОЯНИЯ ДЛЯ ДОБАВЛЕНИЯ ОБЪЕКТОВ =====
-const isAddingMode = ref(false)
-const showAddConfirm = ref(false)
-const showObjectModal = ref(false)
-const pendingObjectCoords = ref(null)
-const confirmPosition = ref({ top: '0px', left: '0px' })
-
-// ===== ГЕОЛОКАЦИЯ: ИНИЦИАЛИЗАЦИЯ COMPOSABLE =====
+// ===== ГЕОЛОКАЦИЯ =====
 const {
   loading: geoLoading,
   error: geoError,
@@ -220,17 +209,17 @@ const {
   removeUserMarker: clearUserMarker
 } = useGeolocation()
 
-// ===== ДАННЫЕ ДЛЯ ОТЗЫВОВ И ИЗБРАННОГО =====
+// ===== ОТЗЫВЫ И ИЗБРАННОЕ =====
 const bookmarkedObjects = ref(new Set())
 const showReviewModal = ref(false)
 const selectedObjectForReview = ref(null)
-const ratingsCache = ref({})
 
 const reviewCategories = [
   { value: 'praise', label: 'Похвала', icon: 'pi pi-thumbs-up' },
   { value: 'suggestion', label: 'Предложение', icon: 'pi pi-lightbulb' },
   { value: 'problem', label: 'Проблема', icon: 'pi pi-exclamation-circle' }
 ]
+
 const objectTypeOptions = [
   { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
   { label: 'Кафе', value: 'Кафе' },
@@ -242,7 +231,7 @@ const objectTypeOptions = [
   { label: 'Детская площадка', value: 'Детская площадка' }
 ]
 
-// ===== ПЕРЕМЕННЫЕ КАРТЫ =====
+// ===== КОНФИГУРАЦИЯ КАРТЫ =====
 let map = null
 let clusterer = null
 let activePlacemark = null
@@ -254,30 +243,30 @@ const UFA_CENTER = [54.7388, 55.9721]
 const DEFAULT_ZOOM = 12
 
 const categories = [
-    'Камера видеонаблюдения', 'Кафе', 'Фонарь', 'Скамейка',
-    'Парк', 'Беседка', 'Остановка', 'Детская площадка'
+  'Камера видеонаблюдения', 'Кафе', 'Фонарь', 'Скамейка',
+  'Парк', 'Беседка', 'Остановка', 'Детская площадка'
 ]
 
 const markerConfig = {
-    "Кафе": { preset: 'islands#redFoodCircleIcon' },
-    "Скамейка": { preset: 'islands#brownCircleIcon' },
-    "Фонарь": { preset: 'islands#yellowInfoCircleIcon' },
-    "Парк": { preset: 'islands#greenParkCircleIcon' },
-    "Беседка": { preset: 'islands#brownLeisureCircleIcon' },
-    "Остановка": { preset: 'islands#blueMassTransitCircleIcon' },
-    "Детская площадка": { preset: 'islands#orangeFamilyCircleIcon' },
-    "Камера видеонаблюдения": { preset: 'islands#blackVideoCircleIcon' }
+  "Кафе": { preset: 'islands#redFoodCircleIcon' },
+  "Скамейка": { preset: 'islands#brownCircleIcon' },
+  "Фонарь": { preset: 'islands#yellowInfoCircleIcon' },
+  "Парк": { preset: 'islands#greenParkCircleIcon' },
+  "Беседка": { preset: 'islands#brownLeisureCircleIcon' },
+  "Остановка": { preset: 'islands#blueMassTransitCircleIcon' },
+  "Детская площадка": { preset: 'islands#orangeFamilyCircleIcon' },
+  "Камера видеонаблюдения": { preset: 'islands#blackVideoCircleIcon' }
 }
 
 const categoryIcons = {
-    'Камера видеонаблюдения': 'pi pi-video',
-    'Кафе': 'pi pi-map-marker',
-    'Фонарь': 'pi pi-lightbulb',
-    'Скамейка': 'pi pi-map-marker',
-    'Парк': 'pi pi-map-marker',
-    'Беседка': 'pi pi-building-columns',
-    'Остановка': 'pi pi-car',
-    'Детская площадка': 'pi pi-face-smile'
+  'Камера видеонаблюдения': 'pi pi-video',
+  'Кафе': 'pi pi-map-marker',
+  'Фонарь': 'pi pi-lightbulb',
+  'Скамейка': 'pi pi-map-marker',
+  'Парк': 'pi pi-map-marker',
+  'Беседка': 'pi pi-building-columns',
+  'Остановка': 'pi pi-car',
+  'Детская площадка': 'pi pi-face-smile'
 }
 
 const getCategoryIcon = (cat) => categoryIcons[cat] || 'pi pi-map-marker'
@@ -294,12 +283,11 @@ const {
   onError: (msg) => setError(msg, 3000)
 })
 
-// ===== ПЕРЕКЛЮЧЕНИЕ СЛОЁВ =====
 const handleLayerSwitch = async (layerId) => {
   await changeLayer(layerId, map)
 }
 
-// ===== СОЗДАНИЕ КАСТОМНОГО МАРКЕРА ПОЛЬЗОВАТЕЛЯ =====
+// ===== МАРКЕР ПОЛЬЗОВАТЕЛЯ =====
 const createCustomUserMarker = (coords) => {
   const svgString = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
@@ -330,15 +318,13 @@ const createCustomUserMarker = (coords) => {
   }
 }
 
+// ===== ГЕОЛОКАЦИЯ: СИНХРОНИЗАЦИЯ =====
 const syncGeoState = () => {
-  loading.value = geoLoading.value
-  
   if (geoError.value) { 
     setError(geoError.value, 3000)
     geoError.value = null 
     loading.value = false
   }
-  
   if (geoSuccess.value) { 
     setSuccess(geoSuccess.value, 3000)
     geoSuccess.value = null 
@@ -346,15 +332,12 @@ const syncGeoState = () => {
   }
 }
 
-// ===== ОБНОВЛЁННАЯ ФУНКЦИЯ ГЕОЛОКАЦИИ =====
 const goToMyLocation = async () => {
   if (!map) {
     setError('Карта ещё не инициализирована')
     return
   }
-
   loading.value = true
-  
   try {
     await performGeolocation({
       zoom: 18,
@@ -367,7 +350,6 @@ const goToMyLocation = async () => {
     })
     syncGeoState()
   } finally {
-    setError('Не удалось определить местоположение')
     loading.value = false
   }
 }
@@ -375,59 +357,26 @@ const goToMyLocation = async () => {
 // ===== ПОИСК ОБЪЕКТОВ =====
 const searchCategories = async (event) => {
   if (searchTimeout) clearTimeout(searchTimeout)
-  
   const query = event.query.trim()
-  
   if (query.length < 2) {
     searchResults.value = []
     return
   }
-  
   searchTimeout = setTimeout(async () => {
     try {
       const response = await api.get('/api/objects', {
         params: { search: query, limit: 15 }
       })
-      
       searchResults.value = response.data.map(obj => ({
         label: `${obj.name} — ${obj.address || 'Адрес не указан'}`,
         ...obj, 
         type: obj.type_name
       }))
-      
     } catch (err) {
       console.error('[Search] Ошибка:', err)
       searchResults.value = []
     }
   }, 300)
-}
-
-// ===== ПОЛУЧЕНИЕ РЕЙТИНГА ОБЪЕКТА =====
-const fetchObjectRating = async (objectId) => {
-  try {
-    if (ratingsCache.value[objectId]) {
-      return ratingsCache.value[objectId]
-    }
-    
-    const response = await api.get(`/reviews/object/${objectId}`, {
-      params: { limit: 100 }
-    })
-    const reviews = response.data.reviews || []
-    
-    if (reviews.length === 0) {
-      return { avg: null, count: 0 }
-    }
-    
-    const total = reviews.reduce((sum, r) => sum + (r.rating || 0), 0)
-    const avg = parseFloat((total / reviews.length).toFixed(1))
-    
-    ratingsCache.value[objectId] = { avg, count: reviews.length }
-    return { avg, count: reviews.length }
-    
-  } catch (err) {
-    console.error(`[Rating] Ошибка для объекта ${objectId}:`, err)
-    return { avg: null, count: 0 }
-  }
 }
 
 // ===== НАВИГАЦИЯ К ОБЪЕКТУ =====
@@ -437,27 +386,16 @@ const navigateToObject = async (obj) => {
     setError('Не удалось перейти к объекту')
     return
   }
-  
-  console.log('[Navigate] Переход к объекту:', obj)
-  
   clearTimeout(balloonTimeout)
   clearTimeout(removeTimeout)
-
   if (activePlacemark && map.geoObjects) {
     map.geoObjects.remove(activePlacemark)
     activePlacemark = null
   }
-  
   try {
-    await map.panTo(obj.coords, {
-      flying: true,
-      duration: 1200
-    })
-    
+    await map.panTo(obj.coords, { flying: true, duration: 1200 })
     await map.setZoom(16, { duration: 400 })
-    
-    const rating = await fetchObjectRating(obj.id_object)
-    
+    const rating = await fetchRating(obj.id_object)
     const placemark = new window.ymaps.Placemark(
       obj.coords,
       { 
@@ -488,36 +426,27 @@ const navigateToObject = async (obj) => {
         balloonMinWidth: 280
       }
     )
-    
     activePlacemark = placemark
     map.geoObjects.add(placemark)
-    
     placemark.events.add('balloonclose', () => {
       if (map.geoObjects && activePlacemark === placemark) {
         map.geoObjects.remove(placemark)
         activePlacemark = null
       }
     })
-    
     balloonTimeout = setTimeout(() => {
-      if (placemark.balloon) {
-        placemark.balloon.open()
-      }
+      if (placemark.balloon) placemark.balloon.open()
     }, 300)
-    
     setSuccess(`Найден: ${obj.name || 'Объект'}`)
-    
   } catch (err) {
     console.error('[Navigate] Ошибка:', err)
     setError('Ошибка при переходе к объекту')
   }
 }
 
-// ===== ОБРАБОТКА НАЖАТИЙ В ПОИСКЕ =====
 const handleSearchKeydown = (event) => {
   if (event.key === 'Enter' && searchResults.value.length > 0) {
     const firstResult = searchResults.value[0]
-
     if (firstResult?.id_object) {
       event.preventDefault()
       navigateToObject(firstResult)
@@ -529,422 +458,319 @@ const handleSearchKeydown = (event) => {
 
 const onCategorySelect = async (event) => {
   const selected = event.value
-
-  if (selected && selected.id_object) {
+  if (selected?.id_object) {
     await navigateToObject(selected)
     searchQuery.value = ''
     searchResults.value = []
-    return
   }
-}
-
-// ===== БЛОКИРОВКА СТАНДАРТНЫХ ОБЪЕКТОВ КАРТЫ =====
-const blockDefaultObjects = (e) => {
-    const target = e.target
-    if (target.classList?.contains('ymaps-2-1-79-object-balloon') || 
-        target.classList?.contains('ymaps-2-1-79-placemark') ||
-        target.closest?.('.ymaps-2-1-79-object-balloon') ||
-        target.closest?.('.ymaps-2-1-79-placemark')) {
-        e.stopPropagation()
-        e.preventDefault()
-        return false
-    }
 }
 
 // ===== ИНИЦИАЛИЗАЦИЯ КАРТЫ =====
 const initMap = () => {
-    debugInfo.value = 'Загрузка API Яндекс.Карт...'
-    return new Promise((resolve, reject) => {
-        if (!mapContainer.value) {
-            reject(new Error('Контейнер карты не найден'))
-            return
-        }
-        
-        const setupMap = () => createMapInstance().then(resolve).catch(reject)
-        
-        if (window.ymaps) {
-            window.ymaps.ready(setupMap)
-        } else {
-            const existingScript = document.querySelector('script[src*="api-maps.yandex.ru"]')
-            if (existingScript) {
-                existingScript.onload = () => window.ymaps?.ready(setupMap)
-                existingScript.onerror = () => reject(new Error('Script load error'))
-                return
-            }
-            
-            const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
-            const script = document.createElement('script')
-            script.src = `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU`
-            script.async = true
-            
-            script.onload = () => window.ymaps?.ready(setupMap)
-            script.onerror = () => reject(new Error('Не удалось загрузить Яндекс.Карты'))
-            document.head.appendChild(script)
-        }
-    })
+  return new Promise((resolve, reject) => {
+    if (!mapContainer.value) {
+      reject(new Error('Контейнер карты не найден'))
+      return
+    }
+    const setupMap = () => createMapInstance().then(resolve).catch(reject)
+    if (window.ymaps) {
+      window.ymaps.ready(setupMap)
+    } else {
+      const existingScript = document.querySelector('script[src*="api-maps.yandex.ru"]')
+      if (existingScript) {
+        existingScript.onload = () => window.ymaps?.ready(setupMap)
+        existingScript.onerror = () => reject(new Error('Script load error'))
+        return
+      }
+      const script = document.createElement('script')
+      script.src = `https://api-maps.yandex.ru/2.1/?apikey=${YANDEX_API_KEY}&lang=ru_RU`
+      script.async = true
+      script.onload = () => window.ymaps?.ready(setupMap)
+      script.onerror = () => reject(new Error('Не удалось загрузить Яндекс.Карты'))
+      document.head.appendChild(script)
+    }
+  })
 }
 
 const createMapInstance = () => {
-    return new Promise((resolve, reject) => {
-        if (!window.ymaps) {
-            reject(new Error('ymaps не определён'))
-            return
-        }
-        
-        window.ymaps.ready(() => {
-            try {
-                map = new window.ymaps.Map(mapContainer.value, {
-                    center: UFA_CENTER,
-                    zoom: DEFAULT_ZOOM,
-                    controls: []
-                })
-                
-                const zoomControl = new window.ymaps.control.ZoomControl({
-                    options: {
-                        size: 'large',
-                        float: 'none',
-                        position: { top: '110px', right: '25px' },
-                        maxWidth: '48px',
-                        maxHeight: '120px'
-                    }
-                })
-                map.controls.add(zoomControl)
-                
-                map.options.set('balloonEnabled', false)
-                map.options.set('hintEnabled', false)
-                map.options.set('suppressMapOpenBlock', true)
-                map.behaviors.disable('dblClickZoom')
-                
-                map.events.add('click', (e) => {
-                  if (isAddingMode.value) {
-                      handleMapClick(e)
-                      return 
-                  }
-
-                  const target = e.get('target')
-                  
-                  if (!target?.options?.get('isOurObject') && target !== clusterer) {
-                      e.stopPropagation()
-                      return false
-                  }
-                })
-                
-                map.events.add('balloonopen', (e) => {
-                    const target = e.get('target')
-                    if (!target?.options?.get('isOurObject')) {
-                        map.balloon.close()
-                        e.stopPropagation()
-                        return false
-                    }
-                })
-                
-                clusterer = new window.ymaps.Clusterer({
-                    preset: 'islands#invertedDarkGreenClusterIcons',
-                    clusterDisableClickZoom: false,
-                    clusterOpenBalloonOnClick: true,
-                    clusterHasBalloon: true
-                })
-                map.geoObjects.add(clusterer)
-                
-                isMapInitialized.value = true
-                debugInfo.value = ''
-                resolve()
-            } catch (err) {
-                reject(err)
-            }
+  return new Promise((resolve, reject) => {
+    if (!window.ymaps) {
+      reject(new Error('ymaps не определён'))
+      return
+    }
+    window.ymaps.ready(() => {
+      try {
+        map = new window.ymaps.Map(mapContainer.value, {
+          center: UFA_CENTER,
+          zoom: DEFAULT_ZOOM,
+          controls: []
         })
+        const zoomControl = new window.ymaps.control.ZoomControl({
+          options: {
+            size: 'large',
+            float: 'none',
+            position: { top: '110px', right: '25px' },
+            maxWidth: '48px',
+            maxHeight: '120px'
+          }
+        })
+        map.controls.add(zoomControl)
+        map.options.set('balloonEnabled', false)
+        map.options.set('hintEnabled', false)
+        map.options.set('suppressMapOpenBlock', true)
+        map.behaviors.disable('dblClickZoom')
+        map.events.add('click', (e) => {
+          if (isAddingMode.value) {
+            handleMapClick(e, YANDEX_API_KEY)
+            return 
+          }
+          const target = e.get('target')
+          if (!target?.options?.get('isOurObject') && target !== clusterer) {
+            e.stopPropagation()
+            return false
+          }
+        })
+        map.events.add('balloonopen', (e) => {
+          const target = e.get('target')
+          if (!target?.options?.get('isOurObject')) {
+            map.balloon.close()
+            e.stopPropagation()
+            return false
+          }
+        })
+        clusterer = new window.ymaps.Clusterer({
+          preset: 'islands#invertedDarkGreenClusterIcons',
+          clusterDisableClickZoom: false,
+          clusterOpenBalloonOnClick: true,
+          clusterHasBalloon: true
+        })
+        map.geoObjects.add(clusterer)
+        isMapInitialized.value = true
+        resolve()
+      } catch (err) {
+        reject(err)
+      }
     })
+  })
 }
 
-// ===== ЗАГРУЗКА ОБЪЕКТОВ ПО КАТЕГОРИИ =====
+// ===== УТИЛИТА: запрос с таймаутом =====
+const fetchWithTimeout = async (promise, timeoutMs = 10000, errorMsg = 'Запрос превысил время ожидания') => {
+  const timeout = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error(errorMsg)), timeoutMs)
+  )
+  return Promise.race([promise, timeout])
+}
+
+// ===== ЗАГРУЗКА ОБЪЕКТОВ =====
 const loadObjects = async (type) => {
-  
-    if (!map || !clusterer) { 
-      setError('Карта ещё не загрузилась')
+  if (!map || !clusterer) { 
+    setError('Карта ещё не загрузилась')
+    return 
+  }
+  clusterer.removeAll()
+  loading.value = true
+  selectedCategory.value = type
+  objectsCount.value = 0
+
+  try {
+    const response = await fetchWithTimeout(
+      api.get('/api/objects', { params: { type, limit: 1000 } }),
+      10000,
+      'Сервер не отвечает'
+    )
+    const objects = response.data || []
+    
+    if (objects.length === 0) { 
+      setError(`Объектов типа "${type}" не найдено`)
       return 
     }
-
-    if (clusterer) {
-      clusterer.removeAll();
-    }
     
-    loading.value = true
-    selectedCategory.value = type
-    clusterer.removeAll()
-    objectsCount.value = 0
-
-    try {
-        const response = await api.get('/api/objects', { 
-          params: { type, limit: 1000 } 
-        })
-
-        const objects = response.data || []
-        
-        if (objects.length === 0) { 
-          setError(`Объектов типа "${type}" не найдено`)
-          return 
+    const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
+    
+    const placemarks = objects.map((obj, index) => {
+      const placemark = new window.ymaps.Placemark(
+        obj.coords,
+        { 
+          balloonContent: createBalloonContent(
+            { ...obj, rating: null, ratingCount: 0 }, 
+            index, 
+            type,
+            { 
+              isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
+              iconClass: getCategoryIcon(type) 
+            }
+          ), 
+          hintContent: obj.name || type 
+        },
+        { 
+          preset: config.preset, 
+          isOurObject: true, 
+          zIndex: 100,
+          objectId: obj.id_object,
+          objectType: type
         }
-        
-        const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
-        
-        const placemarks = objects.map((obj, index) => {
-            const placemark = new window.ymaps.Placemark(
-                obj.coords,
-                { 
-                    balloonContent: createBalloonContent(
-                        { ...obj, rating: null, ratingCount: 0 }, 
-                        index, 
-                        type,
-                        { 
-                          isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
-                          iconClass: getCategoryIcon(type) 
-                        }
-                    ), 
-                    hintContent: obj.name || type 
-                },
-                { 
-                    preset: config.preset, 
-                    isOurObject: true, 
-                    zIndex: 100,
-                    objectId: obj.id_object,
-                    objectType: type
-                }
-            )
-            
-            placemark.events.add('balloonopen', async () => {
-                const objectId = placemark.properties.get('objectId')
-                if (objectId && !ratingsCache.value[objectId]) {
-                    const rating = await fetchObjectRating(objectId)
-                    const objData = placemark.properties.get()
-                    placemark.properties.set('balloonContent', createBalloonContent(
-                        { ...objData, rating: rating.avg, ratingCount: rating.count }, 
-                        0, 
-                        placemark.properties.get('objectType'),
-                        { 
-                          isBookmarked: bookmarkedObjects.value.has(objectId), 
-                          iconClass: getCategoryIcon(placemark.properties.get('objectType')) 
-                        }
-                    ))
-                }
-            })
-            return placemark
-        })
-        
-        clusterer.add(placemarks)
-        objectsCount.value = placemarks.length
-        setSuccess(`Загружено ${placemarks.length} объектов`)
-        
-    } catch (err) {
-      setError(err.response?.data?.detail || `Ошибка: ${err.message}`)
-    } finally { 
-      loading.value = false 
-    }
+      )
+      placemark.events.add('balloonopen', async () => {
+        const objectId = placemark.properties.get('objectId')
+        if (objectId) {
+          const rating = await fetchRating(objectId)
+          const objData = placemark.properties.get()
+          placemark.properties.set('balloonContent', createBalloonContent(
+            { ...objData, rating: rating.avg, ratingCount: rating.count }, 
+            0, 
+            placemark.properties.get('objectType'),
+            { 
+              isBookmarked: bookmarkedObjects.value.has(objectId), 
+              iconClass: getCategoryIcon(placemark.properties.get('objectType')) 
+            }
+          ))
+        }
+      })
+      return placemark
+    })
+    
+    clusterer.add(placemarks)
+    objectsCount.value = placemarks.length
+    setSuccess(`Загружено ${placemarks.length} объектов`)
+    
+  } catch (err) {
+    setError(err.response?.data?.detail || `Ошибка: ${err.message}`)
+  } finally { 
+    loading.value = false 
+  }
 }
 
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ BALLOON =====
 window.__toggleBookmark = (objectId, btnElement) => {
-    if (!isAuthenticated.value) {
-        setError('Пожалуйста, авторизуйтесь, чтобы добавлять в избранное')
-        return
+  if (!isAuthenticated.value) {
+    setError('Пожалуйста, авторизуйтесь, чтобы добавлять в избранное')
+    return
+  }
+  if (bookmarkedObjects.value.has(objectId)) {
+    bookmarkedObjects.value.delete(objectId)
+    if (btnElement) { 
+      btnElement.classList.remove('active')
+      btnElement.querySelector('i').className = 'pi pi-bookmark'
+      btnElement.title = 'Добавить в избранное' 
     }
-    if (bookmarkedObjects.value.has(objectId)) {
-        bookmarkedObjects.value.delete(objectId)
-        if (btnElement) { 
-            btnElement.classList.remove('active')
-            btnElement.querySelector('i').className = 'pi pi-bookmark'
-            btnElement.title = 'Добавить в избранное' 
-        }
-        setSuccess('Убрано из избранного')
-    } else {
-        bookmarkedObjects.value.add(objectId)
-        if (btnElement) { 
-            btnElement.classList.add('active')
-            btnElement.querySelector('i').className = 'pi pi-bookmark-fill'
-            btnElement.title = 'Убрать из избранного' 
-        }
-        setSuccess('Добавлено в избранное')
+    setSuccess('Убрано из избранного')
+  } else {
+    bookmarkedObjects.value.add(objectId)
+    if (btnElement) { 
+      btnElement.classList.add('active')
+      btnElement.querySelector('i').className = 'pi pi-bookmark-fill'
+      btnElement.title = 'Убрать из избранного' 
     }
+    setSuccess('Добавлено в избранное')
+  }
 }
 
 window.__openReview = (objectId, objectName, objectType) => {
-  console.log('[__openReview] Вызов:', { objectId, objectName, objectType })
-  console.log('[__openReview] isAuthenticated:', isAuthenticated.value)
-  
   if (!isAuthenticated.value) {
-    console.warn('[__openReview] Пользователь не авторизован!')
     setError('Необходимо авторизоваться, чтобы оставить отзыв')
     return
   }
-  
   selectedObjectForReview.value = { 
     id: parseInt(objectId),
     name: objectName, 
     type: objectType 
   }
-  
   showReviewModal.value = true
 }
 
-// ===== ОБРАБОТЧИКИ МОДАЛЬНЫХ ОКОН =====
+// ===== ОБРАБОТКА ОТЗЫВОВ =====
 const handleReviewSubmit = async (payload) => {
-  console.log('[Review] Получен payload:', payload)
-  
   try {
     const formData = new FormData()
     formData.append('id_object', payload.id_object)
     formData.append('text', payload.text)
     formData.append('rating', payload.rating)
     formData.append('category', payload.category)
-    
-    if (payload.photo) {
-      formData.append('photo', payload.photo)
-    }
-
-    const response = await api.post('/reviews/', formData, {
+    if (payload.photo) formData.append('photo', payload.photo)
+    await api.post('/reviews/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    
-    console.log('[Review] Ответ сервера:', response.data)
-    
-    const objectId = payload.id_object
-    delete ratingsCache.value[objectId]
-    
+    invalidateRating(payload.id_object)
     if (activePlacemark && selectedCategory.value) {
       await loadObjects(selectedCategory.value)
     }
-    
     setSuccess('Отзыв успешно добавлен!')
-    
   } catch (err) {
-    console.error('[Review] Ошибка отправки:', err)
+    console.error('[Review] Ошибка:', err)
     setError(err.response?.data?.detail || err.message || 'Не удалось отправить отзыв')
   }
-  
   showReviewModal.value = false
 }
 
-const handleReviewError = ({ message }) => {
-  setError(message)
-}
+const handleReviewError = ({ message }) => setError(message)
+const handleReviewCancel = () => {}
 
-const handleReviewCancel = () => { console.log('[ReviewModal] Отменено') }
-
-// ===== РЕЖИМ ДОБАВЛЕНИЯ ОБЪЕКТА =====
-watch(isAddingMode, (newValue) => {
-  if (!map) return
-  if (newValue) {
-    map.behaviors.disable('drag')
-    map.behaviors.disable('scrollZoom')
-    if (mapContainer.value) mapContainer.value.style.cursor = 'crosshair'
-  } else {
-    map.behaviors.enable('drag')
-    map.behaviors.enable('scrollZoom')
-    if (mapContainer.value) mapContainer.value.style.cursor = 'grab'
-  }
-})
-
-const toggleAddMode = () => {
-  if (!isAuthenticated.value) {
-    setError('Необходимо авторизоваться, чтобы добавлять объекты')
-    return
-  }
-  isAddingMode.value = !isAddingMode.value
-  if (!isAddingMode.value) showAddConfirm.value = false
-}
-
-// ===== ГЕОКОДИНГ: КООРДИНАТЫ → АДРЕС =====
-const getAddressFromCoords = async (coords) => {
-  try {
-    const apiKey = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
-    const [lat, lon] = coords
-    const response = await axios.get(
-      `https://geocode-maps.yandex.ru/1.x/?apikey=${apiKey}&geocode=${lon},${lat}&results=1&lang=ru_RU&format=json`
-    )
-    const geoObjects = response.data.response.GeoObjectCollection.featureMember
-    if (geoObjects.length > 0) {
-      return geoObjects[0].GeoObject.metaDataProperty.GeocoderMetaData.text
+// ===== РЕЖИМ ДОБАВЛЕНИЯ: ИНИЦИАЛИЗАЦИЯ COMPOSABLE =====
+const createNewObjectPlacemark = (obj) => {
+  return new window.ymaps.Placemark(
+    obj.coords,
+    { 
+      balloonContent: createBalloonContent(
+        { ...obj, rating: null, ratingCount: 0 }, 
+        0, 
+        obj.type,
+        { 
+          isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
+          iconClass: getCategoryIcon(obj.type) 
+        }
+      ),
+      hintContent: obj.name 
+    },
+    { 
+      preset: markerConfig[obj.type]?.preset || 'islands#grayCircleIcon',
+      isOurObject: true,
+      zIndex: 100
     }
-    return null
-  } catch (err) {
-    console.error('[Geocoding] Ошибка:', err)
-    return null
-  }
+  )
 }
 
-// ===== ОБРАБОТКА КЛИКА ПО КАРТЕ =====
-const handleMapClick = async (e) => {
-  if (!isAddingMode.value || !map) return
-  const coords = e.get('coords')
-  if (!coords) return
-  
-  e.stopPropagation()
-  e.preventDefault()
-  pendingObjectCoords.value = coords
-  
-  const address = await getAddressFromCoords(coords)
-  const containerRect = mapContainer.value?.getBoundingClientRect()
-  
-  if (containerRect) {
-    const position = e.get('position')
-    confirmPosition.value = {
-      top: `${position[1] + 10}px`,
-      left: `${position[0] + 10}px`
-    }
-  }
-  
-  if (address) {
-    setSuccess(`Адрес: ${address}`, 4000)
-  }
-  showAddConfirm.value = true
-}
+const {
+  isAddingMode,
+  showAddConfirm,
+  showObjectModal,
+  pendingObjectCoords,
+  pendingAddress,
+  confirmPosition,
+  isGeocoding,
+  toggleAddMode,
+  handleMapClick,
+  cancelAddObject,
+  confirmAddObject,
+  submitNewObject,
+  resetAfterSubmit,
+  cleanup: cleanupAddMode
+} = useAddObjectMode(
+  toRef(() => map),
+  mapContainer,
+  (msg, duration) => setError(msg, duration),
+  (msg, duration) => setSuccess(msg, duration),
+  createNewObjectPlacemark,
+  (endpoint, data) => api.post(endpoint, data)
+)
 
-const cancelAddObject = () => {
-  showAddConfirm.value = false
-  pendingObjectCoords.value = null
-  isAddingMode.value = false
-}
-
-const confirmAddObject = async () => {
-  if (!pendingObjectCoords.value || !Array.isArray(pendingObjectCoords.value)) {
-    setError('Координаты не определены')
-    return
-  }
-  showAddConfirm.value = false
-  await getAddressFromCoords(pendingObjectCoords.value)
-  showObjectModal.value = true
-}
-
-// ===== СОХРАНЕНИЕ НОВОГО ОБЪЕКТА =====
+// 🔥 ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ: СОХРАНЕНИЕ НОВОГО ОБЪЕКТА =====
 const handleObjectSubmit = async (payload) => {
-  console.log('📦 [ObjectModal] Сохранение объекта:', payload)
   loading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-    const newPlacemark = new window.ymaps.Placemark(
-      payload.coords,
-      { 
-        balloonContent: createBalloonContent(
-          { ...payload, id_object: `temp_${Date.now()}`, rating: null, ratingCount: 0 }, 
-          0, 
-          payload.type,
-          { 
-            isBookmarked: bookmarkedObjects.value.has(`temp_${Date.now()}`), 
-            iconClass: getCategoryIcon(payload.type) 
-          }
-        ),
-        hintContent: payload.name 
-      },
-      { 
-        preset: markerConfig[payload.type]?.preset || 'islands#grayCircleIcon',
-        isOurObject: true,
-        zIndex: 100
-      }
-    )
-    if (clusterer) clusterer.add(newPlacemark)
-    else if (map) map.geoObjects.add(newPlacemark)
+    await submitNewObject(payload)
+    resetAfterSubmit()
     setSuccess(`Объект "${payload.name}" добавлен!`)
-    showObjectModal.value = false
-    isAddingMode.value = false
+    
+    // 👇 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: получаем тип созданного объекта
+    const newObjectType = payload.type || payload.type_name
+    
+    // 👇 Обновляем выбранную категорию на тип нового объекта
+    selectedCategory.value = newObjectType
+    
+    // 👇 Загружаем именно эту категорию с сервера (с новым объектом!)
+    await loadObjects(newObjectType)
+    
   } catch (err) {
     console.error('[ObjectSubmit] Ошибка:', err)
     setError('Не удалось добавить объект. Попробуйте позже.')
@@ -954,16 +780,12 @@ const handleObjectSubmit = async (payload) => {
 }
 
 const handleObjectCancel = () => {
-  pendingObjectCoords.value = null
-  isAddingMode.value = false
-  showObjectModal.value = false
+  cancelAddObject()
 }
 
-const handleObjectError = ({ message }) => {
-  setError(message)
-}
+const handleObjectError = ({ message }) => setError(message)
 
-// ===== ХУКИ ЖИЗНЕННОГО ЦИКЛА =====
+// ===== ЖИЗНЕННЫЙ ЦИКЛ =====
 onMounted(async () => {
   const handleAuthChange = (event) => {
     isAuthenticated.value = event.detail.isAuthenticated
@@ -977,31 +799,27 @@ onMounted(async () => {
     setError(`Ошибка инициализации: ${err.message}`)
   }
   
-  return () => {
-    window.removeEventListener('auth-change', handleAuthChange)
-  }
+  return () => window.removeEventListener('auth-change', handleAuthChange)
 })
 
 onBeforeUnmount(() => {
   clearTimeout(balloonTimeout)
   clearTimeout(removeTimeout)
   clearTimeout(searchTimeout)
-  
   setError.clear?.()
   setSuccess.clear?.()
-  
   if (activePlacemark && map?.geoObjects) {
     map.geoObjects.remove(activePlacemark)
   }
   clearUserMarker()
   destroyGeolocation()
-  
   if (map) { 
     map.destroy()
     map = null
     clusterer = null
   }
-  
+  clearRatingsCache()
+  cleanupAddMode()
   delete window.__toggleBookmark
   delete window.__openReview
 })

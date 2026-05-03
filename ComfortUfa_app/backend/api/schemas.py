@@ -1,6 +1,5 @@
 # schemas.py
-
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -31,21 +30,19 @@ class ObjectResponse(BaseModel):
             raise ValueError(f'Долгота {lon} вне диапазона [-180, 180]')
         return v
     
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
-            "example": {
-                "id_object": 1,
-                "name": "Фонарь уличного освещения",
-                "id_type": 3,
-                "address": "ул. Ленина, 15",
-                "coords": [54.7401, 55.9735],
-                "id_status": 1,
-                "created_by": 42,
-                "created_at": "2024-01-15T10:30:00",
-                "osm_id": 123456789
-            }
+    model_config = ConfigDict(from_attributes=True, json_schema_extra={
+        "example": {
+            "id_object": 1,
+            "name": "Фонарь уличного освещения",
+            "id_type": 3,
+            "address": "ул. Ленина, 15",
+            "coords": [54.7401, 55.9735],
+            "id_status": 1,
+            "created_by": 42,
+            "created_at": "2024-01-15T10:30:00",
+            "osm_id": 123456789
         }
+    })
 
 class ObjectWithTypeName(BaseModel):
     """
@@ -66,8 +63,7 @@ class ObjectWithTypeName(BaseModel):
             raise ValueError('coords must have exactly 2 values')
         return v
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ===== СХЕМА ДЛЯ СТАТИСТИКИ =====
 class PlatformStats(BaseModel):
@@ -75,17 +71,15 @@ class PlatformStats(BaseModel):
     total_problems: int = Field(..., description="Количество отзывов с категорией 'Проблема'")
     total_users: int = Field(..., description="Общее количество зарегистрированных пользователей")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "total_objects": 1234,
-                "total_problems": 856,
-                "total_users": 3421
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "total_objects": 1234,
+            "total_problems": 856,
+            "total_users": 3421
         }
+    })
 
 # ===== СХЕМЫ ДЛЯ АВТОРИЗАЦИИ =====
-
 class UserCreate(BaseModel):
     """Схема для регистрации нового пользователя"""
     email: str = Field(..., min_length=5, max_length=255, example="user@example.com")
@@ -131,5 +125,25 @@ class UserResponse(BaseModel):
     role_name: Optional[str] = None
     created_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+class ObjectCreate(BaseModel):
+    """Схема для создания нового объекта"""
+    name: str = Field(..., min_length=1, max_length=200, description="Название объекта")
+    type_name: str = Field(..., alias="type", description="Название типа объекта (например, 'Фонарь')")
+    address: Optional[str] = Field(None, max_length=300, description="Адрес объекта")
+    coords: List[float] = Field(..., min_length=2, max_length=2, description="Координаты [lat, lon]")
+    
+    @field_validator('coords')
+    @classmethod
+    def validate_coords(cls, v):
+        if len(v) != 2:
+            raise ValueError('coords должен содержать ровно 2 значения [lat, lon]')
+        lat, lon = v
+        if not (-90 <= lat <= 90):
+            raise ValueError(f'Широта {lat} вне диапазона [-90, 90]')
+        if not (-180 <= lon <= 180):
+            raise ValueError(f'Долгота {lon} вне диапазона [-180, 180]')
+        return v
+    
+    model_config = ConfigDict(populate_by_name=True)

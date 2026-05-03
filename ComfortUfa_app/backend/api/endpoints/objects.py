@@ -4,7 +4,7 @@ from sqlalchemy import text
 from typing import Optional, List
 
 from api.database import get_db
-from api.schemas import ObjectWithTypeName
+from api.schemas import ObjectWithTypeName, ObjectCreate, ObjectResponse
 
 # Создаём роутер
 router = APIRouter(prefix="/api", tags=["Объекты"])
@@ -18,8 +18,7 @@ async def get_objects(
 ):
     """Получение объектов для карты с фильтрацией и поиском"""
     try:
-        # 👇 Динамически строим WHERE-условия
-        where_conditions = ["o.id_status = 2"]  # только одобренные
+        where_conditions = ["o.id_status = 2"]
         params = {"limit": limit}
         
         if type:
@@ -52,7 +51,7 @@ async def get_objects(
                 "name": row.name,
                 "type_name": row.type_name or "Не указан",
                 "address": row.address,
-                "coords": [row.lat, row.lon],  # [широта, долгота] для Яндекс.Карт
+                "coords": [row.lat, row.lon],
                 "id_status": row.id_status,
                 "created_at": row.created_at
             }
@@ -63,10 +62,7 @@ async def get_objects(
         
     except Exception as e:
         print(f"❌ Ошибка БД: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка сервера: {str(e)[:200]}"
-        )
+        raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)[:200]}")
 
 
 @router.get("/objects/types", response_model=List[str])
@@ -82,43 +78,95 @@ async def get_object_types(db: Session = Depends(get_db)):
         result = db.execute(query)
         return [row[0] for row in result.fetchall()]
     except:
-        # Запасной вариант, если таблица не найдена
         return [
             "Камера видеонаблюдения", "Кафе", "Фонарь", "Скамейка",
             "Парк", "Беседка", "Остановка", "Детская площадка"
         ]
 
-@router.get("/objects/top-categories", response_model=List[dict])
-async def get_top_categories(
-    limit: int = Query(5, ge=1, le=20),
+@router.post("/objects", response_model=ObjectResponse, status_code=201)
+async def create_object(
+    obj_data: ObjectCreate,
     db: Session = Depends(get_db)
 ):
-    """Возвращает топ категорий по количеству объектов в БД"""
+    """Создание нового объекта благоустройства"""
     try:
-        query = text("""
-            SELECT 
-                t.name_type as category,
-                COUNT(o.id_object) as count
-            FROM public.objects o
-            LEFT JOIN public.type_object t ON o.id_type = t.id_type
-            WHERE o.id_status = 2  -- только одобренные объекты
-              AND t.name_type IS NOT NULL
-            GROUP BY t.name_type
-            ORDER BY count DESC
-            LIMIT :limit
+        print("=" * 60)
+        print(f"📥 ПОЛУЧЕНЫ ДАННЫЕ:")
+        print(f"   name: {obj_data.name}")
+        print(f"   type_name: {obj_data.type_name}")
+        print(f"   coords: {obj_data.coords}")
+        print(f"   address: {obj_data.address}")
+        print("=" * 60)
+        
+        # 1. Находим id_type
+        type_query = text("""
+            SELECT id_type FROM public.type_object 
+            WHERE name_type = :type_name
+        """)
+        type_result = db.execute(type_query, {"type_name": obj_data.type_name}).first()
+        
+        if not type_result:
+            all_types = db.execute(text("SELECT name_type FROM public.type_object")).fetchall()
+            available_types = [t[0] for t in all_types]
+            
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Тип '{obj_data.type_name}' не найден. Доступные: {available_types}"
+            )
+        
+        id_type = type_result.id_type
+        lat, lon = obj_data.coords
+        
+        # 2. Создаём объект (created_by = 1 для тестирования)
+        insert_query = text("""
+            INSERT INTO public.objects (
+                name, id_type, address, location, id_status, created_by
+            ) VALUES (
+                :name, :id_type, :address, 
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
+                1, 1
+            )
+            RETURNING 
+                id_object, name, id_type, address,
+                ST_Y(location::geometry) as lat,
+                ST_X(location::geometry) as lon,
+                id_status, created_by, created_at, osm_id
         """)
         
-        result = db.execute(query, {"limit": limit})
-        rows = result.fetchall()
-        
-        return [
-            {"category": row.category, "count": row.count}
-            for row in rows
-        ]
-        
-    except Exception as e:
-        print(f"❌ Ошибка при получении топ-категорий: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка сервера: {str(e)[:200]}"
+        result = db.execute(
+            insert_query,
+            {
+                "name": obj_data.name,
+                "id_type": id_type,
+                "address": obj_data.address,
+                "lat": float(lat),
+                "lon": float(lon)
+            }
         )
+        
+        new_object = result.first()
+        db.commit()
+        
+        print(f"✅ ОБЪЕКТ СОЗДАН: id={new_object.id_object}")
+        print("=" * 60)
+        
+        return {
+            "id_object": new_object.id_object,
+            "name": new_object.name,
+            "id_type": new_object.id_type,
+            "address": new_object.address,
+            "coords": [float(new_object.lat), float(new_object.lon)],
+            "id_status": new_object.id_status,
+            "created_by": new_object.created_by,
+            "created_at": new_object.created_at,
+            "osm_id": new_object.osm_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)[:200]}")
