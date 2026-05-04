@@ -55,6 +55,8 @@ class ObjectWithTypeName(BaseModel):
     coords: List[float]
     id_status: Optional[int]
     created_at: Optional[datetime]
+    rating_avg: Optional[float] = Field(None, description="Средний рейтинг")
+    rating_count: Optional[int] = Field(0, description="Количество отзывов")
     
     @field_validator('coords')
     @classmethod

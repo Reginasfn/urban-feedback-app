@@ -1,10 +1,8 @@
-// composables/useRatingsCache.js
 import api from '@/services/api'
 
 const DEFAULT_TTL = 5 * 60 * 1000 // 5 минут
 
 export function useRatingsCache(ttl = DEFAULT_TTL) {
-  // Используем обычный Map (без ref), так как кэш не должен триггерить реактивные обновления UI
   const cache = new Map()
 
   const isExpired = (entry) => !entry || Date.now() >= entry.expiresAt
@@ -12,33 +10,39 @@ export function useRatingsCache(ttl = DEFAULT_TTL) {
   const get = (objectId) => {
     const entry = cache.get(objectId)
     if (isExpired(entry)) {
-      cache.delete(objectId) // Ленивая очистка при чтении
+      cache.delete(objectId)
       return null
     }
     return entry.data
   }
 
   const set = (objectId, data) => {
-    cache.set(objectId, {
-      data,
-      expiresAt: Date.now() + ttl
-    })
+    cache.set(objectId, { data, expiresAt: Date.now() + ttl })
   }
 
   const invalidate = (objectId) => cache.delete(objectId)
   const clear = () => cache.clear()
 
   const fetch = async (objectId) => {
-    // 1. Отдаём из кэша, если запись жива
     const cached = get(objectId)
     if (cached !== null) return cached
 
-    // 2. Загружаем с сервера
     try {
       const response = await api.get(`/reviews/object/${objectId}`, {
         params: { limit: 100 }
       })
-      const reviews = response.data.reviews || []
+      
+      // Гибкая обработка ответа сервера
+      let reviews = []
+      if (Array.isArray(response.data)) {
+        reviews = response.data
+      } else if (response.data?.reviews && Array.isArray(response.data.reviews)) {
+        reviews = response.data.reviews
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        reviews = response.data.data
+      } else {
+        reviews = []
+      }
 
       const result = reviews.length === 0
         ? { avg: null, count: 0 }
@@ -47,20 +51,13 @@ export function useRatingsCache(ttl = DEFAULT_TTL) {
             count: reviews.length
           }
 
-      // 3. Сохраняем с TTL
       set(objectId, result)
       return result
     } catch (err) {
-      console.error(`[RatingsCache] Ошибка для объекта ${objectId}:`, err)
+      console.error(`[RatingsCache] Error for object ${objectId}:`, err)
       return { avg: null, count: 0 }
     }
   }
 
-  return {
-    get,
-    set,
-    invalidate,
-    clear,
-    fetch
-  }
+  return { get, set, invalidate, clear, fetch }
 }

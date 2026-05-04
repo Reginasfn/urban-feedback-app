@@ -199,6 +199,9 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const isAuthenticated = ref(checkAuth())
 
+// 👇 ХРАНИЛИЩЕ МАРКЕРОВ ПО ID (для мгновенного обновления рейтинга)
+const placemarkMap = new Map()
+
 // ===== ГЕОЛОКАЦИЯ =====
 const {
   loading: geoLoading,
@@ -568,7 +571,9 @@ const loadObjects = async (type) => {
     setError('Карта ещё не загрузилась')
     return 
   }
+  
   clusterer.removeAll()
+  placemarkMap.clear()
   loading.value = true
   selectedCategory.value = type
   objectsCount.value = 0
@@ -589,44 +594,47 @@ const loadObjects = async (type) => {
     const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
     
     const placemarks = objects.map((obj, index) => {
+      const objectId = obj.id_object
+      const objectType = type
+      const isBookmarked = bookmarkedObjects.value.has(objectId)
+      const iconClass = getCategoryIcon(type)
+      const currentName = obj.name
+      const currentAddress = obj.address
+      
+      // 👇 ИСПОЛЬЗУЕМ РЕЙТИНГ ИЗ ОТВЕТА СЕРВЕРА
+      const initialContent = createBalloonContent(
+        { 
+          id_object: objectId,
+          name: currentName,
+          address: currentAddress,
+          type_name: objectType,
+          rating: obj.rating_avg,      // 👈 Уже есть!
+          ratingCount: obj.rating_count // 👈 Уже есть!
+        }, 
+        index, 
+        objectType,
+        { isBookmarked, iconClass }
+      )
+      
       const placemark = new window.ymaps.Placemark(
         obj.coords,
         { 
-          balloonContent: createBalloonContent(
-            { ...obj, rating: null, ratingCount: 0 }, 
-            index, 
-            type,
-            { 
-              isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
-              iconClass: getCategoryIcon(type) 
-            }
-          ), 
-          hintContent: obj.name || type 
+          balloonContent: initialContent,
+          hintContent: currentName || type
         },
         { 
           preset: config.preset, 
           isOurObject: true, 
-          zIndex: 100,
-          objectId: obj.id_object,
-          objectType: type
+          zIndex: 100
         }
       )
-      placemark.events.add('balloonopen', async () => {
-        const objectId = placemark.properties.get('objectId')
-        if (objectId) {
-          const rating = await fetchRating(objectId)
-          const objData = placemark.properties.get()
-          placemark.properties.set('balloonContent', createBalloonContent(
-            { ...objData, rating: rating.avg, ratingCount: rating.count }, 
-            0, 
-            placemark.properties.get('objectType'),
-            { 
-              isBookmarked: bookmarkedObjects.value.has(objectId), 
-              iconClass: getCategoryIcon(placemark.properties.get('objectType')) 
-            }
-          ))
-        }
-      })
+      
+      // Сохраняем ссылку
+      placemarkMap.set(objectId, { placemark, type: objectType, name: currentName, address: currentAddress })
+      
+      // Больше не нужно загружать рейтинг — он уже есть!
+      // Просто открываем балун с готовыми данными
+      
       return placemark
     })
     
@@ -688,13 +696,19 @@ const handleReviewSubmit = async (payload) => {
     formData.append('rating', payload.rating)
     formData.append('category', payload.category)
     if (payload.photo) formData.append('photo', payload.photo)
+
     await api.post('/reviews/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
+    
+    // 👇 Очищаем кэш (на всякий случай)
     invalidateRating(payload.id_object)
-    if (activePlacemark && selectedCategory.value) {
+    
+    // 👇 ПЕРЕЗАГРУЖАЕМ КАТЕГОРИЮ, чтобы получить новый рейтинг с сервера
+    if (selectedCategory.value) {
       await loadObjects(selectedCategory.value)
     }
+    
     setSuccess('Отзыв успешно добавлен!')
   } catch (err) {
     console.error('[Review] Ошибка:', err)
@@ -819,6 +833,7 @@ onBeforeUnmount(() => {
     clusterer = null
   }
   clearRatingsCache()
+  placemarkMap.clear() // 👈 Очищаем карту маркеров
   cleanupAddMode()
   delete window.__toggleBookmark
   delete window.__openReview

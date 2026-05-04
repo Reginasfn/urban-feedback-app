@@ -29,14 +29,22 @@ async def get_objects(
             where_conditions.append("(o.name ILIKE :q OR o.address ILIKE :q)")
             params["q"] = f"%{search}%"
         
+        # 👇 ДОБАВЛЕН LEFT JOIN К ТАБЛИЦЕ REVIEWS И РАСЧЕТ РЕЙТИНГА
         query_text = f"""
             SELECT 
                 o.id_object, o.name, t.name_type as type_name, o.address,
                 ST_Y(o.location::geometry) as lat, ST_X(o.location::geometry) as lon,
-                o.id_status, o.created_at
+                o.id_status, o.created_at,
+                
+                -- Расчет среднего рейтинга и количества отзывов
+                COALESCE(ROUND(AVG(r.rating)::numeric, 1), 0) as avg_rating,
+                COUNT(r.id_review) as rating_count
+                
             FROM public.objects o
             LEFT JOIN public.type_object t ON o.id_type = t.id_type
+            LEFT JOIN public.reviews r ON o.id_object = r.id_object AND r.id_status = 2
             WHERE {" AND ".join(where_conditions)}
+            GROUP BY o.id_object, t.name_type, o.address, o.location, o.id_status, o.created_at
             ORDER BY o.created_at DESC
             LIMIT :limit
         """
@@ -53,7 +61,10 @@ async def get_objects(
                 "address": row.address,
                 "coords": [row.lat, row.lon],
                 "id_status": row.id_status,
-                "created_at": row.created_at
+                "created_at": row.created_at,
+                # 👇 ДОБАВЛЕНЫ ПОЛЯ РЕЙТИНГА
+                "rating_avg": float(row.avg_rating) if row.avg_rating else None,
+                "rating_count": row.rating_count or 0
             }
             for row in rows
         ]
@@ -62,8 +73,11 @@ async def get_objects(
         
     except Exception as e:
         print(f"❌ Ошибка БД: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)[:200]}")
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка сервера: {str(e)[:200]}"
+        )
+        
 
 @router.get("/objects/types", response_model=List[str])
 async def get_object_types(db: Session = Depends(get_db)):
