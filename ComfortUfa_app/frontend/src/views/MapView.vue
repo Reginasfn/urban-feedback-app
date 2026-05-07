@@ -52,7 +52,7 @@
       </div>
     </Transition>
 
-    <!-- ===== ПРАВАЯ ПАНЕЛЬ: Слои + Геолокация + Добавить объект ===== -->
+    <!-- ===== ПРАВАЯ ПАНЕЛЬ ===== -->
     <div class="map-controls-right">
       <!-- Переключатель слоёв -->
       <div class="layer-switcher">
@@ -79,7 +79,7 @@
         <i class="pi pi-send"></i>
       </button>
 
-      <!-- Кнопка добавления объекта (только для авторизованных) -->
+      <!-- Кнопка добавления объекта -->
       <button 
         v-if="isAuthenticated"
         class="add-object-btn" 
@@ -123,7 +123,7 @@
       </div>
     </Transition>
 
-    <!-- Сообщения об ошибке / успехе -->
+    <!-- Сообщения -->
     <Transition name="fade-slide">
       <div v-if="error" class="error-overlay">
         <i class="pi pi-exclamation-triangle"></i>
@@ -198,9 +198,6 @@ const isMapInitialized = ref(false)
 const searchQuery = ref('')
 const searchResults = ref([])
 const isAuthenticated = ref(checkAuth())
-
-// 👇 ХРАНИЛИЩЕ МАРКЕРОВ ПО ID (для мгновенного обновления рейтинга)
-const placemarkMap = new Map()
 
 // ===== ГЕОЛОКАЦИЯ =====
 const {
@@ -321,7 +318,7 @@ const createCustomUserMarker = (coords) => {
   }
 }
 
-// ===== ГЕОЛОКАЦИЯ: СИНХРОНИЗАЦИЯ =====
+// ===== ГЕОЛОКАЦИЯ =====
 const syncGeoState = () => {
   if (geoError.value) { 
     setError(geoError.value, 3000)
@@ -572,8 +569,13 @@ const loadObjects = async (type) => {
     return 
   }
   
+  // 👇 ОЧИЩАЕМ АКТИВНЫЙ МАРКЕР (от поиска)
+  if (activePlacemark && map.geoObjects) {
+    map.geoObjects.remove(activePlacemark)
+    activePlacemark = null
+  }
+  
   clusterer.removeAll()
-  placemarkMap.clear()
   loading.value = true
   selectedCategory.value = type
   objectsCount.value = 0
@@ -594,47 +596,28 @@ const loadObjects = async (type) => {
     const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
     
     const placemarks = objects.map((obj, index) => {
-      const objectId = obj.id_object
-      const objectType = type
-      const isBookmarked = bookmarkedObjects.value.has(objectId)
-      const iconClass = getCategoryIcon(type)
-      const currentName = obj.name
-      const currentAddress = obj.address
-      
-      // 👇 ИСПОЛЬЗУЕМ РЕЙТИНГ ИЗ ОТВЕТА СЕРВЕРА
-      const initialContent = createBalloonContent(
-        { 
-          id_object: objectId,
-          name: currentName,
-          address: currentAddress,
-          type_name: objectType,
-          rating: obj.rating_avg,      // 👈 Уже есть!
-          ratingCount: obj.rating_count // 👈 Уже есть!
-        }, 
-        index, 
-        objectType,
-        { isBookmarked, iconClass }
-      )
-      
       const placemark = new window.ymaps.Placemark(
         obj.coords,
         { 
-          balloonContent: initialContent,
-          hintContent: currentName || type
+          balloonContent: createBalloonContent(
+            { ...obj, rating: obj.rating_avg, ratingCount: obj.rating_count }, 
+            index, 
+            type,
+            { 
+              isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
+              iconClass: getCategoryIcon(type) 
+            }
+          ), 
+          hintContent: obj.name || type 
         },
         { 
           preset: config.preset, 
           isOurObject: true, 
-          zIndex: 100
+          zIndex: 100,
+          objectId: obj.id_object,
+          objectType: type
         }
       )
-      
-      // Сохраняем ссылку
-      placemarkMap.set(objectId, { placemark, type: objectType, name: currentName, address: currentAddress })
-      
-      // Больше не нужно загружать рейтинг — он уже есть!
-      // Просто открываем балун с готовыми данными
-      
       return placemark
     })
     
@@ -649,7 +632,7 @@ const loadObjects = async (type) => {
   }
 }
 
-// ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ BALLOON =====
+// ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ =====
 window.__toggleBookmark = (objectId, btnElement) => {
   if (!isAuthenticated.value) {
     setError('Пожалуйста, авторизуйтесь, чтобы добавлять в избранное')
@@ -696,19 +679,13 @@ const handleReviewSubmit = async (payload) => {
     formData.append('rating', payload.rating)
     formData.append('category', payload.category)
     if (payload.photo) formData.append('photo', payload.photo)
-
     await api.post('/reviews/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    
-    // 👇 Очищаем кэш (на всякий случай)
     invalidateRating(payload.id_object)
-    
-    // 👇 ПЕРЕЗАГРУЖАЕМ КАТЕГОРИЮ, чтобы получить новый рейтинг с сервера
     if (selectedCategory.value) {
       await loadObjects(selectedCategory.value)
     }
-    
     setSuccess('Отзыв успешно добавлен!')
   } catch (err) {
     console.error('[Review] Ошибка:', err)
@@ -720,7 +697,7 @@ const handleReviewSubmit = async (payload) => {
 const handleReviewError = ({ message }) => setError(message)
 const handleReviewCancel = () => {}
 
-// ===== РЕЖИМ ДОБАВЛЕНИЯ: ИНИЦИАЛИЗАЦИЯ COMPOSABLE =====
+// ===== РЕЖИМ ДОБАВЛЕНИЯ =====
 const createNewObjectPlacemark = (obj) => {
   return new window.ymaps.Placemark(
     obj.coords,
@@ -768,26 +745,26 @@ const {
   (endpoint, data) => api.post(endpoint, data)
 )
 
-// 🔥 ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ: СОХРАНЕНИЕ НОВОГО ОБЪЕКТА =====
+// 🔥 ===== СОХРАНЕНИЕ НОВОГО ОБЪЕКТА =====
 const handleObjectSubmit = async (payload) => {
   loading.value = true
   try {
     await submitNewObject(payload)
-    resetAfterSubmit()
+    
+    // 👇 ПОЛНОСТЬЮ ОТМЕНЯЕМ РЕЖИМ ДОБАВЛЕНИЯ
+    cleanupAddMode() 
+    
     setSuccess(`Объект "${payload.name}" добавлен!`)
     
-    // 👇 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: получаем тип созданного объекта
     const newObjectType = payload.type || payload.type_name
-    
-    // 👇 Обновляем выбранную категорию на тип нового объекта
     selectedCategory.value = newObjectType
-    
-    // 👇 Загружаем именно эту категорию с сервера (с новым объектом!)
     await loadObjects(newObjectType)
     
   } catch (err) {
     console.error('[ObjectSubmit] Ошибка:', err)
-    setError('Не удалось добавить объект. Попробуйте позже.')
+    if (err.message !== 'duplicate_object') {
+      setError('Не удалось добавить объект. Попробуйте позже.')
+    }
   } finally {
     loading.value = false
   }
@@ -820,20 +797,24 @@ onBeforeUnmount(() => {
   clearTimeout(balloonTimeout)
   clearTimeout(removeTimeout)
   clearTimeout(searchTimeout)
+  
   setError.clear?.()
   setSuccess.clear?.()
+  
   if (activePlacemark && map?.geoObjects) {
     map.geoObjects.remove(activePlacemark)
   }
+  
   clearUserMarker()
   destroyGeolocation()
+  
   if (map) { 
     map.destroy()
     map = null
     clusterer = null
   }
+  
   clearRatingsCache()
-  placemarkMap.clear() // 👈 Очищаем карту маркеров
   cleanupAddMode()
   delete window.__toggleBookmark
   delete window.__openReview

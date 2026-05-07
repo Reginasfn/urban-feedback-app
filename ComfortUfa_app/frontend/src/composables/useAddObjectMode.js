@@ -156,75 +156,47 @@ export function useAddObjectMode(
     showObjectModal.value = true
   }
 
-    const submitNewObject = async (payload) => {
-    console.log('[AddObject] Отправка данных:', {
-        ...payload,
-        coords: pendingObjectCoords.value,
-        address: pendingAddress.value || payload.address
-    })
-
+  const submitNewObject = async (payload) => {
     if (!pendingObjectCoords.value) {
-        throw new Error('Координаты объекта не определены')
+      throw new Error('Координаты объекта не определены')
     }
 
     const fullPayload = {
-        ...payload,
-        coords: pendingObjectCoords.value,
-        address: pendingAddress.value || payload.address
+      ...payload,
+      coords: pendingObjectCoords.value,
+      address: pendingAddress.value || payload.address
     }
 
     try {
-        console.log('[AddObject] Отправка POST запроса на /api/objects')
-        const response = await apiPost('/api/objects', fullPayload)
-        
-        console.log('[AddObject] Ответ сервера:', response.data)
-        
-        // Добавляем маркер на карту
-        if (createPlacemarkFn && mapRef.value) {
-        const newPlacemark = createPlacemarkFn({
-            ...fullPayload,
-            id_object: response.data?.id_object || `temp_${Date.now()}`,
-            type: payload.type || payload.type_name
-        })
-        
-        // Правильный способ добавления на карту с Яндекс.Картами
-        try {
-            // Пробуем добавить в кластеризатор
-            const allObjects = mapRef.value.geoObjects
-            if (allObjects) {
-            // Ищем кластеризатор среди объектов карты
-            let foundClusterer = null
-            
-            allObjects.each(function(obj) {
-                if (obj.constructor.name === 'Clusterer' || 
-                    obj.constructor.name === 'Clusterer#active' ||
-                    (obj.options && obj.options.get && obj.options.get('preset')?.includes('Cluster'))) {
-                foundClusterer = obj
-                }
-            })
-            
-            if (foundClusterer) {
-                console.log('[AddObject] Найден кластеризатор, добавляем в него')
-                foundClusterer.add(newPlacemark)
-            } else {
-                console.log('[AddObject] Кластеризатор не найден, добавляем на карту')
-                mapRef.value.geoObjects.add(newPlacemark)
-            }
-            }
-        } catch (err) {
-            console.error('[AddObject] Ошибка добавления на карту:', err)
-            // Фолбэк: просто добавляем на карту
-            mapRef.value.geoObjects.add(newPlacemark)
-        }
-        }
-
-        return { success: true, data: response.data }
+      console.log('[AddObject] Отправка данных:', fullPayload)
+      const response = await apiPost('/api/objects', fullPayload)
+      
+      console.log('[AddObject] Ответ сервера:', response.data)
+      
+      // 👇 УБРАЛИ ДОБАВЛЕНИЕ МАРКЕРА ЗДЕСЬ!
+      // Теперь маркер добавится только через loadObjects()
+      
+      return { success: true,  data: response.data }
     } catch (err) {
-        console.error('[AddObject] Ошибка сохранения:', err)
-        console.error('[AddObject] Ответ сервера:', err.response?.data)
-        throw err
+      console.error('[AddObject] Ошибка:', err)
+      
+      // 🔍 ОБРАБОТКА ОШИБКИ ДУБЛЯ
+      if (err.response?.status === 409 && err.response?.data?.detail?.error === 'duplicate_object') {
+        const detail = err.response.data.detail
+        const existing = detail.existing_object
+        
+        const errorMessage = `⚠️ ${detail.message}\n\n` +
+          `Существующий объект: "${existing.name}"\n` +
+          `Тип: ${existing.type_name}\n` +
+          `Адрес: ${existing.address}`
+        
+        setError(errorMessage, 8000)
+        throw new Error('duplicate_object')
+      }
+      
+      throw err
     }
-    }
+  }
 
   const resetAfterSubmit = () => {
     showObjectModal.value = false
