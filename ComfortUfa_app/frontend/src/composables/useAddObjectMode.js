@@ -157,10 +157,8 @@ export function useAddObjectMode(
   }
 
   const submitNewObject = async (payload) => {
-    if (!pendingObjectCoords.value) {
-      throw new Error('Координаты объекта не определены')
-    }
-
+    if (!pendingObjectCoords.value) throw new Error('Координаты не определены')
+    
     const fullPayload = {
       ...payload,
       coords: pendingObjectCoords.value,
@@ -171,29 +169,15 @@ export function useAddObjectMode(
       console.log('[AddObject] Отправка данных:', fullPayload)
       const response = await apiPost('/api/objects', fullPayload)
       
-      console.log('[AddObject] Ответ сервера:', response.data)
-      
-      // 👇 УБРАЛИ ДОБАВЛЕНИЕ МАРКЕРА ЗДЕСЬ!
-      // Теперь маркер добавится только через loadObjects()
-      
-      return { success: true,  data: response.data }
+      // Маркер добавится автоматически через loadObjects() при обновлении списка!
+      return { success: true, data: response.data }
     } catch (err) {
       console.error('[AddObject] Ошибка:', err)
-      
-      // 🔍 ОБРАБОТКА ОШИБКИ ДУБЛЯ
       if (err.response?.status === 409 && err.response?.data?.detail?.error === 'duplicate_object') {
         const detail = err.response.data.detail
-        const existing = detail.existing_object
-        
-        const errorMessage = `⚠️ ${detail.message}\n\n` +
-          `Существующий объект: "${existing.name}"\n` +
-          `Тип: ${existing.type_name}\n` +
-          `Адрес: ${existing.address}`
-        
-        setError(errorMessage, 8000)
+        setError(`⚠️ ${detail.message}`, 8000)
         throw new Error('duplicate_object')
       }
-      
       throw err
     }
   }
