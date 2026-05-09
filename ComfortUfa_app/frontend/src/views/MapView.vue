@@ -249,6 +249,8 @@ import { useAutoClear } from '@/composables/useAutoClear'
 import { useRatingsCache } from '@/composables/useRatingsCache'
 import { useAddObjectMode } from '@/composables/useAddObjectMode'
 
+import { useSearch } from '@/composables/useSearch'
+
 import { createBalloonContent } from '@/utils/map/balloonRenderer'
 import api from '@/services/api' 
 import { isAuthenticated as checkAuth } from '@/utils/auth'
@@ -260,11 +262,11 @@ const mapContainer = ref(null)
 const loading = ref(false)
 const { value: error, set: setError } = useAutoClear(null, 3000)
 const { value: success, set: setSuccess } = useAutoClear(null, 2500) 
+
 const selectedCategory = ref(null)
 const objectsCount = ref(0)
 const isMapInitialized = ref(false)
-const searchQuery = ref('')
-const searchResults = ref([])
+
 const isAuthenticated = ref(checkAuth())
 
 const { loading: geoLoading, error: geoError, success: geoSuccess, goToMyLocation: performGeolocation, destroy: destroyGeolocation, removeUserMarker: clearUserMarker } = useGeolocation()
@@ -345,18 +347,6 @@ const goToMyLocation = async () => {
   } finally { loading.value = false }
 }
 
-const searchCategories = async (event) => {
-  if (searchTimeout) clearTimeout(searchTimeout)
-  const query = event.query.trim()
-  if (query.length < 2) { searchResults.value = []; return }
-  searchTimeout = setTimeout(async () => {
-    try {
-      const response = await api.get('/api/objects', { params: { search: query, limit: 15 } })
-      searchResults.value = response.data.map(obj => ({ label: `${obj.name} — ${obj.address || 'Адрес не указан'}`, ...obj, type: obj.type_name }))
-    } catch (err) { console.error('[Search] Ошибка:', err); searchResults.value = [] }
-  }, 300)
-}
-
 const navigateToObject = async (obj) => {
   if (!map || !obj.coords) { setError('Не удалось перейти к объекту'); return }
   clearTimeout(balloonTimeout); clearTimeout(removeTimeout)
@@ -374,17 +364,17 @@ const navigateToObject = async (obj) => {
   } catch (err) { setError('Ошибка при переходе к объекту') }
 }
 
-const handleSearchKeydown = (event) => {
-  if (event.key === 'Enter' && searchResults.value.length > 0) {
-    const firstResult = searchResults.value[0]
-    if (firstResult?.id_object) { event.preventDefault(); navigateToObject(firstResult); searchQuery.value = ''; searchResults.value = [] }
-  }
-}
-
-const onCategorySelect = async (event) => {
-  const selected = event.value
-  if (selected?.id_object) { await navigateToObject(selected); searchQuery.value = ''; searchResults.value = [] }
-}
+const {
+  searchQuery,
+  searchResults,
+  searchCategories,
+  handleSearchKeydown,
+  onCategorySelect
+} = useSearch({
+  api,
+  navigateToObject,
+  setError
+})
 
 const initMap = () => new Promise((resolve, reject) => {
   if (!mapContainer.value) { reject(new Error('Контейнер карты не найден')); return }
