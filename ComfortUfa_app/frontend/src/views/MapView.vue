@@ -248,8 +248,9 @@ import { useMapLayers } from '@/composables/useMapLayers'
 import { useAutoClear } from '@/composables/useAutoClear'
 import { useRatingsCache } from '@/composables/useRatingsCache'
 import { useAddObjectMode } from '@/composables/useAddObjectMode'
-
 import { useSearch } from '@/composables/useSearch'
+import { useObjectLoad } from '@/composables/useObjectLoad'
+import { useFilter } from '@/composables/useFilter'
 
 import { createBalloonContent } from '@/utils/map/balloonRenderer'
 import api from '@/services/api' 
@@ -259,17 +260,39 @@ const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
 const { fetch: fetchRating, invalidate: invalidateRating, clear: clearRatingsCache } = useRatingsCache()
 
 const mapContainer = ref(null)
-const loading = ref(false)
 const { value: error, set: setError } = useAutoClear(null, 3000)
 const { value: success, set: setSuccess } = useAutoClear(null, 2500) 
 
 const selectedCategory = ref(null)
-const objectsCount = ref(0)
 const isMapInitialized = ref(false)
-
 const isAuthenticated = ref(checkAuth())
 
 const { loading: geoLoading, error: geoError, success: geoSuccess, goToMyLocation: performGeolocation, destroy: destroyGeolocation, removeUserMarker: clearUserMarker } = useGeolocation()
+
+// ===== ИНИЦИАЛИЗАЦИЯ useFilter =====
+const loadObjectsRef = ref(null)
+
+const {
+  activeFilter,
+  userCoords,
+  NEARBY_RADIUS,
+  AUTH_FILTERS,
+  isFilterAvailable,
+  getFilterTitle,
+  getFilterLabel,
+  toggleFilter,
+  clearFilters,
+  applyFilters,
+  updateUserCoords
+} = useFilter({
+  isAuthenticated: toRef(() => isAuthenticated.value),
+  geoSuccess: toRef(() => geoSuccess.value),
+  selectedCategory,
+  loadObjectsRef,
+  setError: (msg, duration) => setError(msg, duration),
+  setSuccess: (msg, duration) => setSuccess(msg, duration),
+  map: toRef(() => map)
+})
 
 const bookmarkedObjects = ref(new Set())
 const showReviewModal = ref(false)
@@ -299,6 +322,7 @@ let balloonTimeout = null
 let removeTimeout = null
 let searchTimeout = null
 let boundsTimeout = null
+let suppressBoundsReload = false
 
 const UFA_CENTER = [54.7388, 55.9721]
 const DEFAULT_ZOOM = 12
@@ -344,24 +368,123 @@ const goToMyLocation = async () => {
   try {
     await performGeolocation({ zoom: 18, ymaps: window.ymaps, mapInstance: map, createMarkerFn: createCustomUserMarker, onPositionReceived: ({ coords }) => console.log(`[Geo] Позиция: ${coords}`) })
     syncGeoState()
+    
+    if (activeFilter.value === 'nearby') {
+      updateUserCoords(coords)
+    }
   } finally { loading.value = false }
 }
 
 const navigateToObject = async (obj) => {
-  if (!map || !obj.coords) { setError('Не удалось перейти к объекту'); return }
-  clearTimeout(balloonTimeout); clearTimeout(removeTimeout)
-  if (activePlacemark && map.geoObjects) { map.geoObjects.remove(activePlacemark); activePlacemark = null }
+  if (!map || !obj.coords) {
+    setError('Не удалось перейти к объекту')
+    return
+  }
+
+  clearTimeout(balloonTimeout)
+  clearTimeout(removeTimeout)
+  clearTimeout(boundsTimeout)
+
+  if (activePlacemark && map.geoObjects) {
+    map.geoObjects.remove(activePlacemark)
+    activePlacemark = null
+  }
+
   try {
-    await map.panTo(obj.coords, { flying: true, duration: 1200 })
-    await map.setZoom(16, { duration: 400 })
-    const rating = await fetchRating(obj.id_object)
-    const placemark = new window.ymaps.Placemark(obj.coords, { balloonContent: createBalloonContent({ ...obj, rating: rating.avg, ratingCount: rating.count }, 0, obj.type_name, { isBookmarked: bookmarkedObjects.value.has(obj.id_object), iconClass: getCategoryIcon(obj.type_name) }), hintContent: obj.name }, { preset: markerConfig[obj.type_name]?.preset || 'islands#grayCircleIcon', isOurObject: true, zIndex: 1000 })
+    suppressBoundsReload = true
+
+    await map.panTo(obj.coords, {
+      flying: true,
+      duration: 1200
+    })
+
+    await map.setZoom(16, {
+      duration: 400
+    })
+
+    const placemark = new window.ymaps.Placemark(
+      obj.coords,
+      {
+        balloonContent: createBalloonContent(
+          { ...obj, rating: 'loading', ratingCount: 0 },
+          0,
+          obj.type_name,
+          {
+            isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)),
+            iconClass: getCategoryIcon(obj.type_name)
+          }
+        ),
+        hintContent: obj.name
+      },
+      {
+        preset: markerConfig[obj.type_name]?.preset || 'islands#grayCircleIcon',
+        isOurObject: true,
+        zIndex: 10000
+      }
+    )
+
     activePlacemark = placemark
     map.geoObjects.add(placemark)
-    placemark.events.add('balloonclose', () => { if (map.geoObjects && activePlacemark === placemark) { map.geoObjects.remove(placemark); activePlacemark = null } })
-    balloonTimeout = setTimeout(() => { if (placemark.balloon) placemark.balloon.open() }, 300)
+
+    await new Promise((resolve) => {
+      setTimeout(() => {
+        placemark.balloon.open()
+        resolve()
+      }, 200)
+    })
+
+    fetchRating(obj.id_object)
+      .then((rating) => {
+        if (!placemark.balloon || !placemark.balloon.isOpen()) return
+        placemark.properties.set(
+          'balloonContent',
+          createBalloonContent(
+            { ...obj, rating: rating.avg, ratingCount: rating.count },
+            0,
+            obj.type_name,
+            {
+              isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)),
+              iconClass: getCategoryIcon(obj.type_name)
+            }
+          )
+        )
+        setTimeout(() => {
+          if (placemark.balloon) placemark.balloon.open()
+        }, 50)
+      })
+      .catch(() => {
+        if (!placemark.balloon || !placemark.balloon.isOpen()) return
+        placemark.properties.set(
+          'balloonContent',
+          createBalloonContent(
+            { ...obj, rating: null, ratingCount: 0 },
+            0,
+            obj.type_name,
+            {
+              isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)),
+              iconClass: getCategoryIcon(obj.type_name)
+            }
+          )
+        )
+        setTimeout(() => {
+          if (placemark.balloon) placemark.balloon.open()
+        }, 50)
+      })
+
+    placemark.events.add('balloonclose', () => {
+      if (map?.geoObjects && activePlacemark === placemark) {
+        map.geoObjects.remove(placemark)
+        activePlacemark = null
+      }
+    })
+
     setSuccess(`Найден: ${obj.name || 'Объект'}`)
-  } catch (err) { setError('Ошибка при переходе к объекту') }
+  } catch (err) {
+    console.error('[navigateToObject]', err)
+    setError('Ошибка при переходе к объекту')
+  } finally {
+    setTimeout(() => { suppressBoundsReload = false }, 2500)
+  }
 }
 
 const {
@@ -411,6 +534,7 @@ const createMapInstance = () => new Promise((resolve, reject) => {
       })
       
       map.events.add('actionend', () => {
+        if (suppressBoundsReload) return
         if (boundsTimeout) clearTimeout(boundsTimeout)
         boundsTimeout = setTimeout(() => {
           if (selectedCategory.value) loadObjects(selectedCategory.value)
@@ -450,197 +574,94 @@ const getMapBbox = () => {
   }
 }
 
-// ===== ФИЛЬТРЫ: ПРОСТАЯ ЛОГИКА =====
-const activeFilter = ref(null) // Только один активный фильтр
-const userCoords = ref(null)
-const NEARBY_RADIUS = 5000 // Фиксированный радиус 5 км
-
-// Фильтры, требующие авторизации
-const AUTH_FILTERS = ['mine', 'bookmarked']
-
-// Проверка доступности фильтра
-const isFilterAvailable = (filterId) => {
-  if (AUTH_FILTERS.includes(filterId)) {
-    return isAuthenticated.value
-  }
-  return true
-}
-
-// Получение подсказки для фильтра
-const getFilterTitle = (filterId) => {
-  const titles = {
-    nearby: geoSuccess.value 
-      ? 'Объекты в радиусе 5 км от вас' 
-      : 'Определите местоположение для этого фильтра',
-    bookmarked: isAuthenticated.value 
-      ? 'Только избранные объекты' 
-      : 'Только для авторизованных',
-    mine: isAuthenticated.value 
-      ? 'Объекты, которые вы добавили' 
-      : 'Только для авторизованных',
-    problems: 'Объекты с жалобами и низким рейтингом',
-    high_rating: 'Объекты с рейтингом 4.5+'
-  }
-  return titles[filterId]
-}
-
-// Получение метки фильтра для отображения
-const getFilterLabel = (filterId) => {
-  const labels = {
-    nearby: 'рядом',
-    bookmarked: 'избранное',
-    mine: 'мои',
-    problems: 'проблемные',
-    high_rating: '4.5+'
-  }
-  return labels[filterId] || filterId
-}
-
-// Переключение фильтра (только один может быть активен)
-const toggleFilter = (filterId) => {
-  // Проверка доступности
-  if (!isFilterAvailable(filterId)) {
-    setError('Этот фильтр доступен только авторизованным пользователям', 2000)
-    return
-  }
+// 🔥 ИСПРАВЛЕННЫЙ __toggleBookmark - ВСЕ ID как числа!
+window.__toggleBookmark = async (objectId, btnElement) => {
+  // 🔥 Конвертируем в число СРАЗУ!
+  const numericId = Number(objectId)
   
-  // Если нажали на уже активный фильтр — снимаем его
-  if (activeFilter.value === filterId) {
-    activeFilter.value = null
-    applyFilters()
-    return
-  }
-  
-  // Устанавливаем новый активный фильтр
-  activeFilter.value = filterId
-  
-  // Для фильтра "Рядом" — получаем координаты если нужно
-  if (filterId === 'nearby' && !userCoords.value && geoSuccess.value && map) {
-    userCoords.value = map.getCenter()
-  }
-  
-  applyFilters()
-}
-
-// Сброс всех фильтров
-const clearFilters = () => {
-  activeFilter.value = null
-  applyFilters()
-  setSuccess('Фильтры сброшены', 2000)
-}
-
-// Применение фильтров
-const applyFilters = () => {
-  if (selectedCategory.value) {
-    loadObjects(selectedCategory.value)
-  }
-}
-
-// ===== ЗАГРУЗКА ОБЪЕКТОВ С ФИЛЬТРАМИ =====
-const loadObjects = async (type) => {
-  if (!map || !clusterer) { 
-    setError('Карта ещё не загрузилась')
+  if (!isAuthenticated.value) { 
+    setError('Пожалуйста, авторизуйтесь, чтобы добавлять в избранное')
     return 
   }
   
-  if (activePlacemark && map.geoObjects) { 
-    map.geoObjects.remove(activePlacemark)
-    activePlacemark = null 
-  }
-  clusterer.removeAll()
-  loading.value = true
-  selectedCategory.value = type
-  objectsCount.value = 0
-
+  const wasBookmarked = bookmarkedObjects.value.has(numericId)
+  
   try {
-    const bbox = getMapBbox()
-    
-    const params = { type, limit: 500 }
-    if (bbox) params.bbox = bbox
-    
-    // Применяем активный фильтр
-    if (activeFilter.value === 'nearby' && userCoords.value) {
-      params.near_lat = userCoords.value[0]
-      params.near_lon = userCoords.value[1]
-      params.near_radius = NEARBY_RADIUS
-    }
-    if (activeFilter.value === 'bookmarked') {
-      params.bookmarked_ids = Array.from(bookmarkedObjects.value).join(',')
-    }
-    if (activeFilter.value === 'mine') {
-      params.mine = true
-    }
-    if (activeFilter.value === 'problems') {
-      params.min_problems = 1
-      params.max_rating = 3.0
-    }
-    if (activeFilter.value === 'high_rating') {
-      params.min_rating = 4.5
-    }
-    
-    const response = await fetchWithTimeout(
-      api.get('/api/objects', { params }), 
-      10000, 
-      'Сервер не отвечает'
-    )
-    const objects = response.data || []
-    
-    const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
-    
-    const placemarks = objects.map((obj, index) => {
-      const isMine = obj.created_by && isAuthenticated.value && obj.created_by === 123
-      const preset = isMine 
-        ? config.preset?.replace('CircleIcon', 'DotIcon') || 'islands#blueCircleDotIcon'
-        : config.preset
+    if (wasBookmarked) {
+      await api.delete(`/api/objects/${numericId}/favorite`)
+      bookmarkedObjects.value.delete(numericId)
       
-      return new window.ymaps.Placemark(
-        obj.coords,
-        { 
-          balloonContent: createBalloonContent(
-            { ...obj, rating: obj.rating_avg, ratingCount: obj.rating_count }, 
-            index, 
-            type,
-            { 
-              isBookmarked: bookmarkedObjects.value.has(obj.id_object), 
-              iconClass: getCategoryIcon(type) 
-            }
-          ), 
-          hintContent: obj.name || type 
-        },
-        { 
-          preset,
-          isOurObject: true, 
-          zIndex: isMine ? 150 : 100,
-          objectId: obj.id_object,
-          objectType: type
+      if (btnElement) { 
+        btnElement.classList.remove('active')
+        btnElement.querySelector('i').className = 'pi pi-bookmark'
+        btnElement.title = 'Добавить в избранное' 
+      }
+      setSuccess('Убрано из избранного')
+    } else {
+      await api.post(`/api/objects/${numericId}/favorite`)
+      bookmarkedObjects.value.add(numericId)
+      
+      if (btnElement) { 
+        btnElement.classList.add('active')
+        btnElement.querySelector('i').className = 'pi pi-bookmark-fill'
+        btnElement.title = 'Убрать из избранного' 
+      }
+      setSuccess('Добавлено в избранное')
+    }
+    
+    // 🔥 Обновляем ВСЕ placemark этого объекта
+    const updatePlacemarkBookmark = (placemark) => {
+      const pid = placemark.options?.get('objectId')
+      // 🔥 Сравниваем как числа!
+      if (Number(pid) !== numericId) return
+      
+      const objectData = placemark.__objectData
+      if (!objectData) return
+      
+      const objectType = placemark.options.get('objectType')
+      const objectIndex = placemark.__objectIndex || 0
+      
+      // 🔥 Генерируем контент с АКТУАЛЬНЫМ isBookmarked (число!)
+      const updatedContent = createBalloonContent(
+        objectData,
+        objectIndex,
+        objectType,
+        {
+          isBookmarked: bookmarkedObjects.value.has(numericId),
+          iconClass: getCategoryIcon(objectType)
         }
       )
-    })
+      
+      placemark.properties.set('balloonContent', updatedContent)
+      
+      if (placemark.balloon?.isOpen()) {
+        const balloonData = placemark.balloon.getData()
+        if (balloonData?.properties) {
+          balloonData.properties.set('balloonContent', updatedContent)
+        }
+      }
+    }
     
-    clusterer.add(placemarks)
-    objectsCount.value = placemarks.length
+    if (clusterer?.getGeoObjects) {
+      clusterer.getGeoObjects().forEach(updatePlacemarkBookmark)
+    }
+    if (activePlacemark && Number(activePlacemark.options?.get('objectId')) === numericId) {
+      updatePlacemarkBookmark(activePlacemark)
+    }
+    
+    if (activeFilter.value === 'bookmarked' && selectedCategory.value) {
+      applyFilters()
+    }
     
   } catch (err) {
-    setError(err.response?.data?.detail || `Ошибка: ${err.message}`)
-  } finally { 
-    loading.value = false 
-  }
-}
-
-window.__toggleBookmark = (objectId, btnElement) => {
-  if (!isAuthenticated.value) { setError('Пожалуйста, авторизуйтесь, чтобы добавлять в избранное'); return }
-  if (bookmarkedObjects.value.has(objectId)) {
-    bookmarkedObjects.value.delete(objectId)
-    if (btnElement) { btnElement.classList.remove('active'); btnElement.querySelector('i').className = 'pi pi-bookmark'; btnElement.title = 'Добавить в избранное' }
-    setSuccess('Убрано из избранного')
-  } else {
-    bookmarkedObjects.value.add(objectId)
-    if (btnElement) { btnElement.classList.add('active'); btnElement.querySelector('i').className = 'pi pi-bookmark-fill'; btnElement.title = 'Убрать из избранного' }
-    setSuccess('Добавлено в избранное')
-  }
-  // Если активен фильтр "Избранное" — перезагружаем
-  if (activeFilter.value === 'bookmarked' && selectedCategory.value) {
-    loadObjects(selectedCategory.value)
+    console.error('[Bookmark] Error:', err)
+    setError(err.response?.data?.detail || 'Не удалось изменить избранное')
+    // Откат при ошибке
+    if (wasBookmarked) {
+      bookmarkedObjects.value.add(numericId)
+    } else {
+      bookmarkedObjects.value.delete(numericId)
+    }
   }
 }
 
@@ -669,7 +690,7 @@ const handleReviewSubmit = async (payload) => {
 const handleReviewError = ({ message }) => setError(message)
 const handleReviewCancel = () => {}
 
-const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords, { balloonContent: createBalloonContent({ ...obj, rating: null, ratingCount: 0 }, 0, obj.type, { isBookmarked: bookmarkedObjects.value.has(obj.id_object), iconClass: getCategoryIcon(obj.type) }), hintContent: obj.name }, { preset: markerConfig[obj.type]?.preset || 'islands#grayCircleIcon', isOurObject: true, zIndex: 100 })
+const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords, { balloonContent: createBalloonContent({ ...obj, rating: null, ratingCount: 0 }, 0, obj.type, { isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)), iconClass: getCategoryIcon(obj.type) }), hintContent: obj.name }, { preset: markerConfig[obj.type]?.preset || 'islands#grayCircleIcon', isOurObject: true, zIndex: 100 })
 
 const { isAddingMode, showAddConfirm, showObjectModal, pendingObjectCoords, pendingAddress, confirmPosition, isGeocoding, toggleAddMode, handleMapClick, cancelAddObject, confirmAddObject, submitNewObject, resetAfterSubmit, cleanup: cleanupAddMode } = useAddObjectMode(toRef(() => map), mapContainer, (msg, duration) => setError(msg, duration), (msg, duration) => setSuccess(msg, duration), createNewObjectPlacemark, (endpoint, data) => api.post(endpoint, data))
 
@@ -692,12 +713,39 @@ const handleObjectCancel = () => cancelAddObject()
 const handleObjectError = ({ message }) => setError(message)
 
 onMounted(async () => {
-  const handleAuthChange = (event) => { isAuthenticated.value = event.detail.isAuthenticated }
+  // 🔥 Загрузка избранного с конвертацией ID в числа
+  const loadUserFavorites = async () => {
+    if (!isAuthenticated.value) return
+    try {
+      const response = await api.get('/api/objects/me/favorites/ids')
+      // 🔥 Конвертируем ВСЕ ID в числа!
+      const favoriteIds = (response.data.favorite_ids || []).map(id => Number(id))
+      bookmarkedObjects.value = new Set(favoriteIds)
+      console.log('[Favorites] Loaded as NUMBERS:', Array.from(bookmarkedObjects.value))
+    } catch (err) {
+      console.error('[Favorites] Error loading:', err)
+    }
+  }
+
+  const handleAuthChange = (event) => { 
+    isAuthenticated.value = event.detail.isAuthenticated
+    if (event.detail.isAuthenticated) {
+      loadUserFavorites()
+    } else {
+      bookmarkedObjects.value.clear()
+    }
+  }
+  
   window.addEventListener('auth-change', handleAuthChange)
+  
   try {
     await initMap()
+    await loadUserFavorites() // 👈 Загружаем избранное при старте
     if (categories.length > 0) await loadObjects(categories[0])
-  } catch (err) { setError(`Ошибка инициализации: ${err.message}`) }
+  } catch (err) { 
+    setError(`Ошибка инициализации: ${err.message}`) 
+  }
+  
   return () => window.removeEventListener('auth-change', handleAuthChange)
 })
 
@@ -710,6 +758,32 @@ onBeforeUnmount(() => {
   clearRatingsCache(); cleanupAddMode()
   delete window.__toggleBookmark; delete window.__openReview
 })
+
+const {
+  loadObjects,
+  loading,
+  objectsCount
+} = useObjectLoad({
+  api,
+  map: toRef(() => map),
+  clusterer: toRef(() => clusterer),
+  fetchWithTimeout,
+  getMapBbox,
+  createBalloonContent,
+  markerConfig,
+  bookmarkedObjects,
+  getCategoryIcon,
+  setError,
+  setSuccess,
+  fetchRating,
+  activePlacemarkRef: toRef(() => activePlacemark),
+  activeFilterRef: activeFilter,
+  userCoordsRef: userCoords,
+  selectedCategoryRef: selectedCategory,
+  isAuthenticatedRef: isAuthenticated
+})
+
+loadObjectsRef.value = loadObjects
 </script>
 
 <style scoped>

@@ -1,7 +1,4 @@
-/**
- * Генерирует HTML-контент для балуна Яндекс.Карт
- * Чистая функция: принимает данные → возвращает строку
- */
+// balloonRenderer.js
 export const createBalloonContent = (obj, index, type, options = {}) => {
   const { isBookmarked = false, iconClass = 'pi pi-map-marker' } = options
 
@@ -12,26 +9,28 @@ export const createBalloonContent = (obj, index, type, options = {}) => {
   // ===== РАБОТА С РЕЙТИНГОМ =====
   const rating = obj.rating
   const ratingCount = obj.ratingCount || 0
-  
+
   let ratingStars = ''
   let ratingDisplay = ''
-  
-  if (rating !== null && rating !== undefined && !isNaN(rating)) {
-    const roundedRating = Math.round(rating * 2) / 2
-    const fullStars = Math.floor(roundedRating)
-    const hasHalfStar = roundedRating % 1 >= 0.5
+
+  // Обработка специальных состояний
+  if (rating === 'loading') {
+    ratingStars = '<i class="pi pi-spin pi-spinner" style="font-size:18px"></i>'
+    ratingDisplay = '<span class="no-rating">Загрузка...</span>'
+  } else if (rating === 'error' || rating === null || rating === undefined || isNaN(rating)) {
+    ratingStars = '☆☆☆☆☆'
+    ratingDisplay = '<span class="no-rating">Нет оценок</span>'
+  } else {
+    // ✅ ПРОСТОЕ РЕШЕНИЕ: округляем до целого, показываем только полные звёзды
+    const fullStars = Math.round(rating) // 4.3 → 4, 4.6 → 5
     
-    ratingStars = '★'.repeat(fullStars)
-    if (hasHalfStar) ratingStars += '½'
-    ratingStars += '☆'.repeat(5 - fullStars - (hasHalfStar ? 1 : 0))
+    ratingStars = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars)
     
+    // Но числовой рейтинг показываем точный
     ratingDisplay = `<span class="rating-value">${rating.toFixed(1)}</span>/5`
     if (ratingCount > 0) {
       ratingDisplay += ` <span class="rating-count">(${ratingCount} ${getRatingWord(ratingCount)})</span>`
     }
-  } else {
-    ratingStars = '☆☆☆☆☆'
-    ratingDisplay = '<span class="no-rating">Нет оценок</span>'
   }
   
   // 🔒 Экранирование

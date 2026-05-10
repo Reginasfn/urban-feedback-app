@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List
@@ -9,6 +9,28 @@ from api.models.user import User
 from api.utils.auth import get_current_active_user
 
 router = APIRouter(prefix="/api", tags=["Объекты"])
+
+
+async def get_optional_current_user(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Получает текущего пользователя или None если не авторизован"""
+    try:
+        token = request.cookies.get("access_token")
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+        
+        if not token:
+            return None
+            
+        # Пробуем получить пользователя через оригинальную функцию
+        return await get_current_active_user(request=request, db=db)
+    except Exception as e:
+        print(f"[get_optional_current_user] Not authenticated: {e}")
+        return None
 
 
 def check_duplicate_object(db: Session, name: str, coords: list, type_name: str, radius_meters: float = 15):
@@ -83,7 +105,7 @@ async def get_objects(
     
     # Фильтр: мои объекты
     mine: Optional[bool] = Query(None, description="Только мои объекты"),
-    current_user: Optional[User] = Depends(lambda: None),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     
     # Фильтр: проблемные объекты
     min_problems: Optional[int] = Query(None, ge=1, description="Мин. количество жалоб"),
@@ -205,18 +227,41 @@ async def get_objects(
         result = db.execute(query, params)
         rows = result.fetchall()
         
-        return [
-            {
+        # 🔥 ВАЖНО: Получаем избранные объекты для текущего пользователя
+        user_favorite_ids = set()
+        if current_user:
+            try:
+                print(f"[get_objects] User {current_user.id_user} authenticated, loading favorites...")
+                fav_query = text("""
+                    SELECT id_object FROM favorites 
+                    WHERE id_user = :user_id
+                """)
+                fav_result = db.execute(fav_query, {"user_id": current_user.id_user})
+                user_favorite_ids = {row.id_object for row in fav_result.fetchall()}
+                print(f"[get_objects] User has {len(user_favorite_ids)} favorites: {user_favorite_ids}")
+            except Exception as e:
+                print(f"[get_objects] Error loading favorites: {e}")
+                user_favorite_ids = set()
+
+        # Формируем ответ с полем is_bookmarked
+        response_data = []
+        for row in rows:
+            is_bookmarked = row.id_object in user_favorite_ids
+            response_data.append({
                 "id_object": row.id_object, 
                 "name": row.name,
                 "type_name": row.type_name or "Не указан", 
                 "address": row.address,
                 "coords": [row.lat, row.lon], 
                 "id_status": row.id_status,
-                "created_at": row.created_at
-            }
-            for row in rows
-        ]
+                "created_at": row.created_at,
+                "is_bookmarked": is_bookmarked,  # 🔥 Добавляем поле
+                "rating_avg": None,  # Эти поля будут заполнены при загрузке рейтинга
+                "rating_count": 0
+            })
+        
+        print(f"[get_objects] Returning {len(response_data)} objects, user favorites: {len(user_favorite_ids)}")
+        return response_data
         
     except HTTPException:
         raise
@@ -343,3 +388,122 @@ async def create_object(
             status_code=500, 
             detail=f"Ошибка сервера: {str(e)[:200]}"
         )
+
+
+# ===== ИЗБРАННОЕ =====
+
+@router.get("/objects/me/favorites/ids")
+async def get_my_favorite_ids(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Получить список ID избранных объектов текущего пользователя"""
+    try:
+        print(f"[favorites/ids] User {current_user.id_user} requesting favorites")
+        query = text("""
+            SELECT id_object 
+            FROM favorites 
+            WHERE id_user = :user_id
+        """)
+        result = db.execute(query, {"user_id": current_user.id_user})
+        favorite_ids = [row.id_object for row in result.fetchall()]
+        print(f"[favorites/ids] Found {len(favorite_ids)} favorites: {favorite_ids}")
+        return {"favorite_ids": favorite_ids}
+    except Exception as e:
+        print(f"Ошибка получения избранного: {e}")
+        return {"favorite_ids": []}
+
+
+@router.post("/objects/{object_id}/favorite")
+async def add_to_favorites(
+    object_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Добавить объект в избранное"""
+    try:
+        print(f"[POST favorite] User {current_user.id_user} adding object {object_id}")
+        
+        # Проверяем существование объекта
+        obj_check = db.execute(
+            text("SELECT id_object FROM objects WHERE id_object = :id AND id_status = 2"),
+            {"id": object_id}
+        ).first()
+        
+        if not obj_check:
+            raise HTTPException(status_code=404, detail="Объект не найден")
+        
+        # Проверяем, нет ли уже в избранном
+        exists = db.execute(
+            text("""
+                SELECT id_favorite FROM favorites 
+                WHERE id_user = :user_id AND id_object = :obj_id
+            """),
+            {"user_id": current_user.id_user, "obj_id": object_id}
+        ).first()
+        
+        if exists:
+            print(f"[POST favorite] Object {object_id} already in favorites")
+            return {"message": "Уже в избранном", "id_favorite": exists.id_favorite}
+        
+        # Добавляем в избранное
+        insert_query = text("""
+            INSERT INTO favorites (id_user, id_object) 
+            VALUES (:user_id, :obj_id)
+            RETURNING id_favorite
+        """)
+        
+        result = db.execute(
+            insert_query,
+            {"user_id": current_user.id_user, "obj_id": object_id}
+        )
+        
+        db.commit()
+        new_id = result.first().id_favorite
+        
+        print(f"[POST favorite] Object {object_id} added to favorites with id {new_id}")
+        return {"message": "Добавлено в избранное", "id_favorite": new_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Ошибка добавления в избранное: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)}")
+
+
+@router.delete("/objects/{object_id}/favorite")
+async def remove_from_favorites(
+    object_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Удалить объект из избранного"""
+    try:
+        print(f"[DELETE favorite] User {current_user.id_user} removing object {object_id}")
+        
+        # Удаляем из избранного
+        delete_query = text("""
+            DELETE FROM favorites 
+            WHERE id_user = :user_id AND id_object = :obj_id
+        """)
+        
+        result = db.execute(
+            delete_query,
+            {"user_id": current_user.id_user, "obj_id": object_id}
+        )
+        
+        db.commit()
+        
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Не найдено в избранном")
+        
+        print(f"[DELETE favorite] Object {object_id} removed from favorites")
+        return {"message": "Удалено из избранного"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Ошибка удаления из избранного: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)}")
