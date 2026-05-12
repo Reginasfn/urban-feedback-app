@@ -18,7 +18,7 @@ export function useObjectLoad({
   userCoordsRef,
   selectedCategoryRef,
   isAuthenticatedRef,
-  NEARBY_RADIUS = 5000
+  NEARBY_RADIUS = 1000
 }) {
   const loading = ref(false)
   const objectsCount = ref(0)

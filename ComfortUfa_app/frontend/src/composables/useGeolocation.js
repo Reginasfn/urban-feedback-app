@@ -17,11 +17,11 @@ export function useGeolocation() {
 
     return new ymaps.Placemark(
       coords,
+      { hintContent: 'Вы здесь' },
       {
-        hintContent: 'Вы здесь'
-      },
-      {
-        preset: 'islands#greenCircleDotIcon'
+        preset: 'islands#greenCircleDotIcon',
+        zIndex: 2000,
+        isOurObject: true
       }
     )
   }
@@ -30,8 +30,9 @@ export function useGeolocation() {
     if (userMarker.value && mapInstance?.geoObjects) {
       try {
         mapInstance.geoObjects.remove(userMarker.value)
+        console.log('[GeoMarker] Маркер удалён')
       } catch (e) {
-        // Игнорируем ошибки удаления
+        console.warn('[GeoMarker] Ошибка удаления:', e)
       }
       userMarker.value = null
     }
@@ -49,13 +50,19 @@ export function useGeolocation() {
       createMarkerFn = null,
     } = options
 
-    if (loading.value) return
+    if (loading.value) {
+      console.log('[Geo] Уже выполняется запрос геолокации')
+      return
+    }
+    
     loading.value = true
     error.value = null
+    console.log('[Geo] Запрос геолокации...')
 
     if (!ymaps || !mapInstance) {
       error.value = 'Карта или API не готовы'
       loading.value = false
+      console.error('[Geo] Ошибка: карта или ymaps не готовы')
       return null
     }
 
@@ -64,34 +71,43 @@ export function useGeolocation() {
     if (!navigator.geolocation) {
       error.value = 'Геолокация не поддерживается браузером'
       loading.value = false
+      console.error('[Geo] Геолокация не поддерживается')
       return null
     }
 
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          console.log('[Geo] Позиция получена:', position.coords)
           const { latitude: lat, longitude: lon, accuracy } = position.coords
           const coords = [lat, lon]
 
           userPosition.value = { lat, lon, accuracy }
 
+          // Плавное перемещение карты
           mapInstance.setCenter(coords, zoom, {
             flying: true,
             duration: 600
           })
 
+          // Удаляем старый маркер перед созданием нового
           removeUserMarker(mapInstance)
 
+          // Создаём маркер
           const markerCreator = createMarkerFn || createDefaultUserMarker
           const newMarker = markerCreator(coords, ymaps)
           
           if (newMarker) {
             userMarker.value = newMarker
             mapInstance.geoObjects.add(newMarker)
+            console.log('[GeoMarker] Маркер добавлен на карту, geoObjects count:', mapInstance.geoObjects.getLength())
+          } else {
+            console.error('[GeoMarker] Не удалось создать маркер')
           }
 
           const accText = accuracy < 100 ? `±${Math.round(accuracy)}м` : 'приблизительно'
           success.value = `Вы находитесь здесь (точность: ${accText})`
+          console.log('[Geo] Успех:', success.value)
 
           if (typeof onPositionReceived === 'function') {
             onPositionReceived({ coords, accuracy })
@@ -107,6 +123,7 @@ export function useGeolocation() {
             3: 'Тайм-аут запроса'
           }
           error.value = `Геолокация: ${errors[err.code] || 'Ошибка'}`
+          console.error('[Geo] Ошибка геолокации:', error.value, err)
           loading.value = false
           resolve(null)
         },
@@ -121,6 +138,7 @@ export function useGeolocation() {
   }
 
   const destroy = () => {
+    console.log('[Geo] Уничтожение геолокации')
     removeUserMarker(currentMapInstance.value)
     clearMessages()
     currentMapInstance.value = null

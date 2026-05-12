@@ -72,7 +72,7 @@
             :title="getFilterTitle('nearby')"
           >
             <i class="pi pi-location"></i>
-            <span>Рядом со мной (5 км)</span>
+            <span>Рядом со мной (1 км)</span>
           </button>
           
           <!-- Избранное (только для авторизованных) -->
@@ -360,11 +360,50 @@ const { currentLayer: activeLayer, isSwitching: layerSwitching, layers: availabl
 const handleLayerSwitch = async (layerId) => await changeLayer(layerId, map)
 
 const createCustomUserMarker = (coords) => {
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48"><ellipse cx="24" cy="44" rx="10" ry="3" fill="rgba(0,0,0,0.2)"/><path d="M24 2C15.16 2 8 9.16 8 18c0 13.5 16 28 16 28s16-14.5 16-28c0-8.84-7.16-16-16-16z" fill="#168f04" stroke="#ffffff" stroke-width="2.5"/><path d="M18 24l4 4 8-8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/></svg>`
+  // ✅ Правильный SVG с data: префиксом
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+    <ellipse cx="24" cy="44" rx="10" ry="3" fill="rgba(0,0,0,0.2)"/>
+    <path d="M24 2C15.16 2 8 9.16 8 18c0 13.5 16 28 16 28s16-14.5 16-28c0-8.84-7.16-16-16-16z" 
+          fill="#168f04" stroke="#ffffff" stroke-width="2.5"/>
+    <path d="M18 24l4 4 8-8" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+  </svg>`
+  
   try {
-    return new window.ymaps.Placemark(coords, { hintContent: 'Вы здесь' }, { iconLayout: 'default#image', iconImageHref: `image/svg+xml,${encodeURIComponent(svgString)}`, iconImageSize: [48, 48], iconImageOffset: [-24, -48], zIndex: 2000, isOurObject: true })
-  } catch {
-    return new window.ymaps.Placemark(coords, { hintContent: 'Вы здесь' }, { preset: 'islands#greenCircleDotIcon', zIndex: 2000, isOurObject: true })
+    console.log('[Marker] Создаём SVG-маркер...', coords)
+    const marker = new window.ymaps.Placemark(
+      coords, 
+      { hintContent: 'Вы здесь' }, 
+      { 
+        // ✅ ВАЖНО: data:image/svg+xml, а не просто image/svg+xml
+        iconLayout: 'default#image',
+        iconImageHref: `data:image/svg+xml,${encodeURIComponent(svgString)}`,
+        iconImageSize: [48, 48],
+        iconImageOffset: [-24, -48],
+        zIndex: 2000,
+        isOurObject: true
+      }
+    )
+    console.log('[Marker] SVG-маркер создан успешно:', marker)
+    return marker
+  } catch (e) {
+    console.error('[Marker] Ошибка создания SVG-маркера:', e)
+    // Фолбэк на стандартный маркер
+    try {
+      const fallback = new window.ymaps.Placemark(
+        coords, 
+        { hintContent: 'Вы здесь' }, 
+        { 
+          preset: 'islands#greenCircleDotIcon', 
+          zIndex: 2000, 
+          isOurObject: true 
+        }
+      )
+      console.log('[Marker] Использован фолбэк-маркер')
+      return fallback
+    } catch (e2) {
+      console.error('[Marker] Ошибка даже фолбэка:', e2)
+      return null
+    }
   }
 }
 
@@ -375,15 +414,39 @@ const syncGeoState = () => {
 
 const goToMyLocation = async () => {
   if (!map) { setError('Карта ещё не инициализирована'); return }
+
   loading.value = true
+
+  suppressBoundsReload = true
+  setTimeout(() => { suppressBoundsReload = false }, 2000)
+
   try {
-    await performGeolocation({ zoom: 18, ymaps: window.ymaps, mapInstance: map, createMarkerFn: createCustomUserMarker, onPositionReceived: ({ coords }) => console.log(`[Geo] Позиция: ${coords}`) })
+    // ✅ Получаем результат с координатами из performGeolocation
+    const result = await performGeolocation({ 
+      zoom: 18, 
+      ymaps: window.ymaps, 
+      mapInstance: map, 
+      createMarkerFn: createCustomUserMarker, 
+      onPositionReceived: ({ coords }) => {
+        console.log(`[Geo] Позиция получена:`, coords)
+      } 
+    })
+
     syncGeoState()
     
-    if (activeFilter.value === 'nearby') {
-      updateUserCoords(coords)
+    // ✅ Обновляем координаты для фильтра "Рядом", если есть результат
+    if (activeFilter.value === 'nearby' && result?.coords) {
+      console.log('[Filter] Updating userCoords for nearby:', result.coords)
+      updateUserCoords(result.coords)
     }
-  } finally { loading.value = false }
+
+  } catch (err) {
+    console.error('[goToMyLocation] Error:', err)
+    setError('Не удалось определить местоположение')
+  
+  } finally { 
+    loading.value = false 
+  }
 }
 
 const navigateToObject = async (obj) => {
