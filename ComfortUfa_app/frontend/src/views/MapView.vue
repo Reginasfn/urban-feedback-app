@@ -29,6 +29,17 @@
       <div class="sidebar-section categories-section">
         <label class="sidebar-label">Объекты</label>
         <div class="categories-list">
+
+          <!-- 🔥 Кнопка "ВСЕ" -->
+          <button 
+            @click="loadObjects('all')"
+            :class="{ active: selectedCategory === 'all' }"
+            class="category-btn all-btn"
+          >
+            <i class="pi pi-th-large"></i>
+            Все объекты
+          </button>
+
           <button 
             v-for="cat in categories" 
             :key="cat" 

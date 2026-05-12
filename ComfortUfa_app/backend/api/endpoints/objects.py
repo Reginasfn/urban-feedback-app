@@ -1,3 +1,5 @@
+# objects.py
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -15,7 +17,6 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 
 from api.utils.auth import SECRET_KEY, ALGORITHM
-
 
 async def get_optional_current_user(
     request: Request,
@@ -155,7 +156,7 @@ async def get_objects(
     # Основные параметры
     type: Optional[str] = Query(None, description="Тип объекта"),
     search: Optional[str] = Query(None, description="Поиск по названию/адресу"),
-    limit: int = Query(1000, ge=1, le=1500),
+    limit: int = Query(1000, ge=1, le=10000),
     bbox: Optional[str] = Query(None, description="BBOX: min_lon,min_lat,max_lon,max_lat"),
     
     # Фильтр: рядом со мной
@@ -264,7 +265,7 @@ async def get_objects(
             params["min_rating"] = min_rating
         
         # 7. Тип объекта
-        if type:
+        if type and type.lower() != 'all':
             where_conditions.append("t.name_type = :type")
             params["type"] = type
         
@@ -290,7 +291,7 @@ async def get_objects(
         result = db.execute(query, params)
         rows = result.fetchall()
         
-        # 🔥 ВАЖНО: Получаем избранные объекты для текущего пользователя
+        # Получаем избранные объекты для текущего пользователя
         user_favorite_ids = set()
         if current_user:
             try:
@@ -306,7 +307,7 @@ async def get_objects(
                 print(f"[get_objects] Error loading favorites: {e}")
                 user_favorite_ids = set()
 
-        # Формируем ответ с полем is_bookmarked
+        # Формируем ответ
         response_data = []
         for row in rows:
             is_bookmarked = row.id_object in user_favorite_ids
@@ -318,12 +319,11 @@ async def get_objects(
                 "coords": [row.lat, row.lon], 
                 "id_status": row.id_status,
                 "created_at": row.created_at,
-                "is_bookmarked": is_bookmarked,  # 🔥 Добавляем поле
-                "rating_avg": None,  # Эти поля будут заполнены при загрузке рейтинга
+                "is_bookmarked": is_bookmarked,
+                "rating_avg": None,
                 "rating_count": 0
             })
         
-        print(f"[get_objects] Returning {len(response_data)} objects, user favorites: {len(user_favorite_ids)}")
         return response_data
         
     except HTTPException:

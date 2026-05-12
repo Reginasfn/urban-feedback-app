@@ -41,7 +41,28 @@ export function useObjectLoad({
 
     try {
       const bbox = getMapBbox()
-      const params = { type, limit: 500 }
+
+      let limit = 1500  // по умолчанию
+      
+      if (type === 'all') {
+        limit = 2000  // больше для режима "ВСЕ"
+      }
+      
+      if (activeFilterRef.value === 'bookmarked') {
+        limit = 5000  // ещё больше для избранного
+      }
+      
+      if (activeFilterRef.value === 'mine') {
+        limit = 3000  // для "мои объекты"
+      }
+      
+
+      const params = { limit }
+
+      if (type && type !== 'all') {
+        params.type = type
+      }
+
       if (bbox) params.bbox = bbox
 
       if (activeFilterRef.value === 'nearby' && userCoordsRef.value) {
@@ -49,14 +70,17 @@ export function useObjectLoad({
         params.near_lon = userCoordsRef.value[1]
         params.near_radius = NEARBY_RADIUS
       }
+
       if (activeFilterRef.value === 'bookmarked') {
         params.bookmarked_ids = Array.from(bookmarkedObjects.value).join(',')
       }
       if (activeFilterRef.value === 'mine') params.mine = true
+
       if (activeFilterRef.value === 'problems') {
         params.min_problems = 1
         params.max_rating = 3.0
       }
+
       if (activeFilterRef.value === 'high_rating') params.min_rating = 4.5
 
       const response = await fetchWithTimeout(
@@ -66,9 +90,12 @@ export function useObjectLoad({
       )
 
       const objects = response.data || []
-      const config = markerConfig[type] || { preset: 'islands#grayCircleIcon' }
 
       const placemarks = objects.map((obj, index) => {
+        const objectType = obj.type_name || obj.type || type
+
+        const config = markerConfig[objectType] || { preset: 'islands#grayCircleIcon' }
+
         const isMine = obj.created_by && isAuthenticatedRef.value && obj.created_by === 123
         const preset = isMine
           ? config.preset?.replace('CircleIcon', 'DotIcon') || 'islands#blueCircleDotIcon'
@@ -86,20 +113,20 @@ export function useObjectLoad({
             balloonContent: createBalloonContent(
               { ...obj, rating: initialRating, ratingCount: initialRatingCount },
               index,
-              type,
+              objectType,
               {
                 isBookmarked: bookmarkedObjects.value.has(numericId),
-                iconClass: getCategoryIcon(type)
+                iconClass: getCategoryIcon(objectType)
               }
             ),
-            hintContent: obj.name || type
+            hintContent: obj.name || objectType
           },
           {
             preset,
             isOurObject: true,
             zIndex: isMine ? 150 : 100,
             objectId: numericId,
-            objectType: type
+            objectType: objectType
           }
         )
 
@@ -119,11 +146,11 @@ export function useObjectLoad({
         placemark.events.add('balloonopen', async () => {
           const currentIsBookmarked = bookmarkedObjects.value.has(numericId)
           
-          // 🔥 ВСЕГДА берём рейтинг из __objectData.rating (не rating_avg!)
           const currentRating = placemark.__objectData.rating ?? null
           const currentRatingCount = placemark.__objectData.ratingCount ?? 0
 
-          // 🔥 ВСЕГДА обновляем контент с актуальными данными
+          const displayType = placemark.options?.get('objectType') || objectType
+
           const freshContent = createBalloonContent(
             { 
               ...placemark.__objectData, 
@@ -140,7 +167,6 @@ export function useObjectLoad({
           
           placemark.properties.set('balloonContent', freshContent)
 
-          // 🔥 Если рейтинг уже загружен — НЕ делаем запрос, просто выходим
           if (placemark.__ratingLoaded || placemark.__ratingLoading) {
             return
           }
@@ -152,7 +178,6 @@ export function useObjectLoad({
 
             if (!placemark.balloon || !placemark.balloon.isOpen()) return
 
-            // 🔥 Обновляем ВСЕ поля рейтинга в __objectData
             placemark.__objectData = {
               ...placemark.__objectData,
               rating: rating.avg,
@@ -162,7 +187,6 @@ export function useObjectLoad({
             }
             placemark.__ratingLoaded = true
 
-            // 🔥 Генерируем контент с новым рейтингом
             const updatedContent = createBalloonContent(
               placemark.__objectData,
               placemark.__objectIndex,
@@ -182,7 +206,6 @@ export function useObjectLoad({
 
           } catch (err) {
             console.error(`[Rating] Error for ${numericId}:`, err)
-            // 🔥 Помечаем как загруженный (чтобы не пытаться снова), но с null
             placemark.__ratingLoaded = true
             placemark.__objectData = {
               ...placemark.__objectData,
