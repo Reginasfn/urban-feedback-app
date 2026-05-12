@@ -1,8 +1,10 @@
+# mainApi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.database import engine, Base, get_db 
 from api.endpoints import objects, stats, auth, users, reviews
 from fastapi.staticfiles import StaticFiles
+import logging
 
 app = FastAPI(
     title="ComfortUfa API",
@@ -30,8 +32,10 @@ app.mount("/resources", StaticFiles(directory="resources"), name="resources")
 @app.on_event("startup")
 async def startup_event():
     # Создаём таблицы, если их нет
+    print("🔥 MAIN API LOADED")
     Base.metadata.create_all(bind=engine)
     print("🔌 Подключение к БД: db_citycare@localhost:5432")
+    logging.basicConfig(level=logging.DEBUG)
 
 @app.get("/")
 async def root():

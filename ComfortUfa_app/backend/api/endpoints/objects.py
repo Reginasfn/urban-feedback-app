@@ -11,27 +11,90 @@ from api.utils.auth import get_current_active_user
 router = APIRouter(prefix="/api", tags=["Объекты"])
 
 
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
+
+from api.utils.auth import SECRET_KEY, ALGORITHM
+
+
 async def get_optional_current_user(
     request: Request,
     db: Session = Depends(get_db)
 ) -> Optional[User]:
-    """Получает текущего пользователя или None если не авторизован"""
+    """
+    Возвращает текущего пользователя или None,
+    если токен отсутствует или невалиден.
+    """
+
     try:
-        token = request.cookies.get("access_token")
+        token = None
+
+        # 1. Сначала ищем токен в заголовке Authorization
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+
+        # 2. Если нет — пробуем из cookie
         if not token:
-            auth_header = request.headers.get("Authorization")
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header.split(" ")[1]
-        
+            token = request.cookies.get("access_token")
+
+        # 3. Если токена нет — пользователь не авторизован
         if not token:
             return None
-            
-        # Пробуем получить пользователя через оригинальную функцию
-        return await get_current_active_user(request=request, db=db)
-    except Exception as e:
-        print(f"[get_optional_current_user] Not authenticated: {e}")
+
+        # 4. Декодируем JWT
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+
+        if not user_id:
+            return None
+
+        # 5. Получаем пользователя из БД
+        # ВАЖНО: В твоей таблице users НЕТ поля is_active
+        query = text("""
+            SELECT
+                id_user,
+                email,
+                nickname,
+                phone,
+                password_hash,
+                id_role,
+                created_at
+            FROM users
+            WHERE id_user = :user_id
+        """)
+
+        row = db.execute(query, {"user_id": int(user_id)}).first()
+
+        if not row:
+            return None
+
+        # 6. Создаём объект User вручную
+        user = User()
+        user.id_user = row.id_user
+        user.email = row.email
+        user.nickname = row.nickname
+        user.phone = row.phone
+        user.password_hash = row.password_hash
+        user.id_role = row.id_role
+        user.created_at = row.created_at
+
+        # Для совместимости с get_current_active_user
+        user.is_active = True
+
+        print(f"[get_optional_current_user] Authenticated user: {user.id_user}")
+
+        return user
+
+    except JWTError as e:
+        print(f"[get_optional_current_user] Invalid JWT token: {e}")
+        db.rollback()
         return None
 
+    except Exception as e:
+        print(f"[get_optional_current_user] Not authenticated: {e}")
+        db.rollback()  # ОБЯЗАТЕЛЬНО сбрасываем failed transaction
+        return None
 
 def check_duplicate_object(db: Session, name: str, coords: list, type_name: str, radius_meters: float = 15):
     """
@@ -296,6 +359,7 @@ async def get_object_types(db: Session = Depends(get_db)):
 @router.post("/objects", response_model=ObjectResponse, status_code=201)
 async def create_object(
     obj_data: ObjectCreate, 
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Создание нового объекта с проверкой на дубли"""
@@ -343,9 +407,7 @@ async def create_object(
             INSERT INTO public.objects (
                 name, id_type, address, location, id_status, created_by
             ) VALUES (
-                :name, :id_type, :address, 
-                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), 
-                2, 1
+                :name, :id_type, :address, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), 2, :created_by
             )
             RETURNING 
                 id_object, name, id_type, address,
@@ -360,7 +422,8 @@ async def create_object(
                 "id_type": id_type, 
                 "address": obj_data.address,
                 "lat": float(lat), 
-                "lon": float(lon)
+                "lon": float(lon),
+                "created_by": current_user.id_user
             }
         )
         

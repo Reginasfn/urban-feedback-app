@@ -1,3 +1,5 @@
+<!-- LoginModal -->
+
 <template>
     <Dialog
         :visible="visible"
