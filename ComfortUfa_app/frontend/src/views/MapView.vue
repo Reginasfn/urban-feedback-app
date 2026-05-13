@@ -1,3 +1,4 @@
+<!-- src/views/MapView.vue -->
 <template>
   <div class="map-page">
     <!-- ===== ЛЕВЫЙ ПЛАВАЮЩИЙ САЙДБАР ===== -->
@@ -29,8 +30,6 @@
       <div class="sidebar-section categories-section">
         <label class="sidebar-label">Объекты</label>
         <div class="categories-list">
-
-          <!-- 🔥 Кнопка "ВСЕ" -->
           <button 
             @click="loadObjects('all')"
             :class="{ active: selectedCategory === 'all' }"
@@ -62,7 +61,6 @@
           </button>
         </div>
         
-        <!-- Список фильтров со скроллом -->
         <div class="filters-list">
           <button 
             @click="toggleFilter('nearby')"
@@ -75,7 +73,6 @@
             <span>Рядом со мной (1 км)</span>
           </button>
           
-          <!-- Избранное (только для авторизованных) -->
           <button 
             @click="toggleFilter('bookmarked')"
             :class="{ active: activeFilter === 'bookmarked' }"
@@ -88,7 +85,6 @@
             <i v-if="!isAuthenticated" class="pi pi-lock" style="margin-left: auto; font-size: 10px;"></i>
           </button>
           
-          <!-- Мои объекты (только для авторизованных) -->
           <button 
             @click="toggleFilter('mine')"
             :class="{ active: activeFilter === 'mine' }"
@@ -101,7 +97,6 @@
             <i v-if="!isAuthenticated" class="pi pi-lock" style="margin-left: auto; font-size: 10px;"></i>
           </button>
           
-          <!-- Проблемные -->
           <button 
             @click="toggleFilter('problems')"
             :class="{ active: activeFilter === 'problems' }"
@@ -113,7 +108,6 @@
             <span>Проблемное</span>
           </button>
           
-          <!-- Высокий рейтинг -->
           <button 
             @click="toggleFilter('high_rating')"
             :class="{ active: activeFilter === 'high_rating' }"
@@ -138,7 +132,6 @@
 
     <!-- ===== ПРАВАЯ ПАНЕЛЬ ===== -->
     <div class="map-controls-right">
-      <!-- Переключатель слоёв -->
       <div class="layer-switcher">
         <button 
           v-for="layer in availableLayers" 
@@ -153,17 +146,10 @@
         </button>
       </div>
 
-      <!-- Кнопка геолокации -->
-      <button 
-        class="geo-btn" 
-        @click="goToMyLocation" 
-        :disabled="loading"
-        title="Моё местоположение"
-      >
+      <button class="geo-btn" @click="goToMyLocation" :disabled="loading" title="Моё местоположение">
         <i class="pi pi-send"></i>
       </button>
 
-      <!-- Кнопка добавления объекта -->
       <button 
         v-if="isAuthenticated"
         class="add-object-btn" 
@@ -243,6 +229,15 @@
       @error="handleObjectError"
     />
 
+    <!-- 🔥 МОДАЛКА ДЕТАЛЕЙ ОБЪЕКТА -->
+    <ObjectDetailsModal
+      v-model:visible="modalVisible"
+      :object="modalObject"
+      @close="onModalClose"
+      @review-submitted="onReviewSubmitted"
+      @go-to-map="onGoToMap"
+    />
+
     <!-- Карта -->
     <div ref="mapContainer" class="map-container"></div>
   </div>
@@ -253,6 +248,7 @@ import { ref, onMounted, onBeforeUnmount, toRef } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
+import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
 
 import { useGeolocation } from '@/composables/useGeolocation'
 import { useMapLayers } from '@/composables/useMapLayers'
@@ -326,6 +322,10 @@ const objectTypeOptions = [
   { label: 'Детская площадка', value: 'Детская площадка' }
 ]
 
+// 🔥 ПЕРЕМЕННЫЕ ДЛЯ МОДАЛКИ (добавлено!)
+const modalVisible = ref(false)
+const modalObject = ref(null)
+
 let map = null
 let clusterer = null
 let activePlacemark = null
@@ -360,7 +360,6 @@ const { currentLayer: activeLayer, isSwitching: layerSwitching, layers: availabl
 const handleLayerSwitch = async (layerId) => await changeLayer(layerId, map)
 
 const createCustomUserMarker = (coords) => {
-  // ✅ Правильный SVG с data: префиксом
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
     <ellipse cx="24" cy="44" rx="10" ry="3" fill="rgba(0,0,0,0.2)"/>
     <path d="M24 2C15.16 2 8 9.16 8 18c0 13.5 16 28 16 28s16-14.5 16-28c0-8.84-7.16-16-16-16z" 
@@ -369,12 +368,10 @@ const createCustomUserMarker = (coords) => {
   </svg>`
   
   try {
-    console.log('[Marker] Создаём SVG-маркер...', coords)
     const marker = new window.ymaps.Placemark(
       coords, 
       { hintContent: 'Вы здесь' }, 
       { 
-        // ✅ ВАЖНО: data:image/svg+xml, а не просто image/svg+xml
         iconLayout: 'default#image',
         iconImageHref: `data:image/svg+xml,${encodeURIComponent(svgString)}`,
         iconImageSize: [48, 48],
@@ -383,23 +380,15 @@ const createCustomUserMarker = (coords) => {
         isOurObject: true
       }
     )
-    console.log('[Marker] SVG-маркер создан успешно:', marker)
     return marker
   } catch (e) {
     console.error('[Marker] Ошибка создания SVG-маркера:', e)
-    // Фолбэк на стандартный маркер
     try {
-      const fallback = new window.ymaps.Placemark(
+      return new window.ymaps.Placemark(
         coords, 
         { hintContent: 'Вы здесь' }, 
-        { 
-          preset: 'islands#greenCircleDotIcon', 
-          zIndex: 2000, 
-          isOurObject: true 
-        }
+        { preset: 'islands#greenCircleDotIcon', zIndex: 2000, isOurObject: true }
       )
-      console.log('[Marker] Использован фолбэк-маркер')
-      return fallback
     } catch (e2) {
       console.error('[Marker] Ошибка даже фолбэка:', e2)
       return null
@@ -414,36 +403,25 @@ const syncGeoState = () => {
 
 const goToMyLocation = async () => {
   if (!map) { setError('Карта ещё не инициализирована'); return }
-
   loading.value = true
-
   suppressBoundsReload = true
   setTimeout(() => { suppressBoundsReload = false }, 2000)
 
   try {
-    // ✅ Получаем результат с координатами из performGeolocation
     const result = await performGeolocation({ 
       zoom: 18, 
       ymaps: window.ymaps, 
       mapInstance: map, 
       createMarkerFn: createCustomUserMarker, 
-      onPositionReceived: ({ coords }) => {
-        console.log(`[Geo] Позиция получена:`, coords)
-      } 
+      onPositionReceived: ({ coords }) => console.log(`[Geo] Позиция получена:`, coords)
     })
-
     syncGeoState()
-    
-    // ✅ Обновляем координаты для фильтра "Рядом", если есть результат
     if (activeFilter.value === 'nearby' && result?.coords) {
-      console.log('[Filter] Updating userCoords for nearby:', result.coords)
       updateUserCoords(result.coords)
     }
-
   } catch (err) {
     console.error('[goToMyLocation] Error:', err)
     setError('Не удалось определить местоположение')
-  
   } finally { 
     loading.value = false 
   }
@@ -455,9 +433,7 @@ const navigateToObject = async (obj) => {
     return
   }
 
-  clearTimeout(balloonTimeout)
-  clearTimeout(removeTimeout)
-  clearTimeout(boundsTimeout)
+  clearTimeout(balloonTimeout); clearTimeout(removeTimeout); clearTimeout(boundsTimeout)
 
   if (activePlacemark && map.geoObjects) {
     map.geoObjects.remove(activePlacemark)
@@ -466,15 +442,8 @@ const navigateToObject = async (obj) => {
 
   try {
     suppressBoundsReload = true
-
-    await map.panTo(obj.coords, {
-      flying: true,
-      duration: 1200
-    })
-
-    await map.setZoom(16, {
-      duration: 400
-    })
+    await map.panTo(obj.coords, { flying: true, duration: 1200 })
+    await map.setZoom(16, { duration: 400 })
 
     const placemark = new window.ymaps.Placemark(
       obj.coords,
@@ -501,10 +470,7 @@ const navigateToObject = async (obj) => {
     map.geoObjects.add(placemark)
 
     await new Promise((resolve) => {
-      setTimeout(() => {
-        placemark.balloon.open()
-        resolve()
-      }, 200)
+      setTimeout(() => { placemark.balloon.open(); resolve() }, 200)
     })
 
     fetchRating(obj.id_object)
@@ -522,9 +488,7 @@ const navigateToObject = async (obj) => {
             }
           )
         )
-        setTimeout(() => {
-          if (placemark.balloon) placemark.balloon.open()
-        }, 50)
+        setTimeout(() => { if (placemark.balloon) placemark.balloon.open() }, 50)
       })
       .catch(() => {
         if (!placemark.balloon || !placemark.balloon.isOpen()) return
@@ -540,9 +504,7 @@ const navigateToObject = async (obj) => {
             }
           )
         )
-        setTimeout(() => {
-          if (placemark.balloon) placemark.balloon.open()
-        }, 50)
+        setTimeout(() => { if (placemark.balloon) placemark.balloon.open() }, 50)
       })
 
     placemark.events.add('balloonclose', () => {
@@ -567,11 +529,7 @@ const {
   searchCategories,
   handleSearchKeydown,
   onCategorySelect
-} = useSearch({
-  api,
-  navigateToObject,
-  setError
-})
+} = useSearch({ api, navigateToObject, setError })
 
 const initMap = () => new Promise((resolve, reject) => {
   if (!mapContainer.value) { reject(new Error('Контейнер карты не найден')); return }
@@ -648,9 +606,43 @@ const getMapBbox = () => {
   }
 }
 
-// 🔥 ИСПРАВЛЕННЫЙ __toggleBookmark - ВСЕ ID как числа!
+// 🔥 ФУНКЦИЯ ОТКРЫТИЯ МОДАЛКИ (добавлено!)
+const openObjectDetails = async (objectId) => {
+  try {
+    modalObject.value = null
+    modalVisible.value = true
+    
+    const response = await api.get(`/api/objects/${objectId}`)
+    modalObject.value = response.data
+  } catch (err) {
+    console.error('[Modal] Error loading object:', err)
+    setError('Не удалось загрузить данные объекта')
+    // modalVisible.value = false
+  }
+}
+
+// 🔥 РЕГИСТРАЦИЯ ГЛОБАЛЬНОГО КОЛБЭКА (добавлено!)
+window.__openObjectDetails = openObjectDetails
+
+// 🔥 ОБРАБОТЧИКИ СОБЫТИЙ МОДАЛКИ (добавлено!)
+const onModalClose = () => {
+  modalObject.value = null
+}
+
+const onReviewSubmitted = (data) => {
+  if (selectedCategory.value) {
+    loadObjects(selectedCategory.value)
+  }
+}
+
+const onGoToMap = (object) => {
+  if (object?.coords && map) {
+    map.setCenter(object.coords, 16, { duration: 500 })
+  }
+}
+
+// 🔥 ИСПРАВЛЕННЫЙ __toggleBookmark
 window.__toggleBookmark = async (objectId, btnElement) => {
-  // 🔥 Конвертируем в число СРАЗУ!
   const numericId = Number(objectId)
   
   if (!isAuthenticated.value) { 
@@ -664,7 +656,6 @@ window.__toggleBookmark = async (objectId, btnElement) => {
     if (wasBookmarked) {
       await api.delete(`/api/objects/${numericId}/favorite`)
       bookmarkedObjects.value.delete(numericId)
-      
       if (btnElement) { 
         btnElement.classList.remove('active')
         btnElement.querySelector('i').className = 'pi pi-bookmark'
@@ -674,7 +665,6 @@ window.__toggleBookmark = async (objectId, btnElement) => {
     } else {
       await api.post(`/api/objects/${numericId}/favorite`)
       bookmarkedObjects.value.add(numericId)
-      
       if (btnElement) { 
         btnElement.classList.add('active')
         btnElement.querySelector('i').className = 'pi pi-bookmark-fill'
@@ -683,19 +673,14 @@ window.__toggleBookmark = async (objectId, btnElement) => {
       setSuccess('Добавлено в избранное')
     }
     
-    // 🔥 Обновляем ВСЕ placemark этого объекта
     const updatePlacemarkBookmark = (placemark) => {
       const pid = placemark.options?.get('objectId')
-      // 🔥 Сравниваем как числа!
       if (Number(pid) !== numericId) return
-      
       const objectData = placemark.__objectData
       if (!objectData) return
-      
       const objectType = placemark.options.get('objectType')
       const objectIndex = placemark.__objectIndex || 0
       
-      // 🔥 Генерируем контент с АКТУАЛЬНЫМ isBookmarked (число!)
       const updatedContent = createBalloonContent(
         objectData,
         objectIndex,
@@ -705,9 +690,7 @@ window.__toggleBookmark = async (objectId, btnElement) => {
           iconClass: getCategoryIcon(objectType)
         }
       )
-      
       placemark.properties.set('balloonContent', updatedContent)
-      
       if (placemark.balloon?.isOpen()) {
         const balloonData = placemark.balloon.getData()
         if (balloonData?.properties) {
@@ -726,11 +709,9 @@ window.__toggleBookmark = async (objectId, btnElement) => {
     if (activeFilter.value === 'bookmarked' && selectedCategory.value) {
       applyFilters()
     }
-    
   } catch (err) {
     console.error('[Bookmark] Error:', err)
     setError(err.response?.data?.detail || 'Не удалось изменить избранное')
-    // Откат при ошибке
     if (wasBookmarked) {
       bookmarkedObjects.value.add(numericId)
     } else {
@@ -764,7 +745,17 @@ const handleReviewSubmit = async (payload) => {
 const handleReviewError = ({ message }) => setError(message)
 const handleReviewCancel = () => {}
 
-const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords, { balloonContent: createBalloonContent({ ...obj, rating: null, ratingCount: 0 }, 0, obj.type, { isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)), iconClass: getCategoryIcon(obj.type) }), hintContent: obj.name }, { preset: markerConfig[obj.type]?.preset || 'islands#grayCircleIcon', isOurObject: true, zIndex: 100 })
+const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords, { 
+  balloonContent: createBalloonContent({ ...obj, rating: null, ratingCount: 0 }, 0, obj.type, { 
+    isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)), 
+    iconClass: getCategoryIcon(obj.type) 
+  }), 
+  hintContent: obj.name 
+}, { 
+  preset: markerConfig[obj.type]?.preset || 'islands#grayCircleIcon', 
+  isOurObject: true, 
+  zIndex: 100 
+})
 
 const { isAddingMode, showAddConfirm, showObjectModal, pendingObjectCoords, pendingAddress, confirmPosition, isGeocoding, toggleAddMode, handleMapClick, cancelAddObject, confirmAddObject, submitNewObject, resetAfterSubmit, cleanup: cleanupAddMode } = useAddObjectMode(toRef(() => map), mapContainer, (msg, duration) => setError(msg, duration), (msg, duration) => setSuccess(msg, duration), createNewObjectPlacemark, (endpoint, data) => api.post(endpoint, data))
 
@@ -787,12 +778,10 @@ const handleObjectCancel = () => cancelAddObject()
 const handleObjectError = ({ message }) => setError(message)
 
 onMounted(async () => {
-  // 🔥 Загрузка избранного с конвертацией ID в числа
   const loadUserFavorites = async () => {
     if (!isAuthenticated.value) return
     try {
       const response = await api.get('/api/objects/me/favorites/ids')
-      // 🔥 Конвертируем ВСЕ ID в числа!
       const favoriteIds = (response.data.favorite_ids || []).map(id => Number(id))
       bookmarkedObjects.value = new Set(favoriteIds)
       console.log('[Favorites] Loaded as NUMBERS:', Array.from(bookmarkedObjects.value))
@@ -814,7 +803,7 @@ onMounted(async () => {
   
   try {
     await initMap()
-    await loadUserFavorites() // 👈 Загружаем избранное при старте
+    await loadUserFavorites()
     if (categories.length > 0) await loadObjects(categories[0])
   } catch (err) { 
     setError(`Ошибка инициализации: ${err.message}`) 
@@ -830,7 +819,11 @@ onBeforeUnmount(() => {
   clearUserMarker(); destroyGeolocation()
   if (map) { map.destroy(); map = null; clusterer = null }
   clearRatingsCache(); cleanupAddMode()
-  delete window.__toggleBookmark; delete window.__openReview
+  
+  // 🔥 ОЧИСТКА ГЛОБАЛЬНЫХ КОЛБЭКОВ (добавлено!)
+  if (window.__openObjectDetails) delete window.__openObjectDetails
+  if (window.__toggleBookmark) delete window.__toggleBookmark
+  if (window.__openReview) delete window.__openReview
 })
 
 const {

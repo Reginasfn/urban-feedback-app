@@ -62,8 +62,9 @@ export const createBalloonContent = (obj, index, type, options = {}) => {
       
       <div class="object-card-footer">
         <span class="object-type">${displayType}</span>
-        <button class="review-btn" onclick="window.__openReview?.('${safeId}', '${safeName}', '${safeType}')">
-          <i class="pi pi-pencil"></i> Добавить отзыв
+        <!-- 🔥 Кнопка "Подробнее" вместо "Добавить отзыв" -->
+        <button class="details-btn" onclick="window.__openObjectDetails?.('${safeId}')">
+          <i class="pi pi-info-circle"></i> Подробнее
         </button>
       </div>
     </div>
@@ -122,14 +123,22 @@ export const createBalloonContent = (obj, index, type, options = {}) => {
         font-size: 11px; font-weight: 600; color: #168f04; 
         background: rgba(22,143,4,0.1); padding: 4px 10px; border-radius: 20px; text-transform: uppercase; 
       }
-      .review-btn { 
+      /* 🔥 Стили для кнопки "Подробнее" */
+      .details-btn { 
         display: flex; align-items: center; gap: 6px; 
-        background: linear-gradient(135deg, #168f04 0%, #007306 100%); 
-        color: white; border: none; padding: 10px 18px; border-radius: 10px; 
+        background: rgba(59, 130, 246, 0.1); /* синий оттенок для инфо-кнопки */
+        color: #3b82f6; 
+        border: 1px solid #93c5fd;
+        padding: 10px 18px; border-radius: 10px; 
         font-size: 12px; font-weight: 600; cursor: pointer; 
-        transition: all 0.3s; box-shadow: 0 4px 14px rgba(22,143,4,0.3); 
+        transition: all 0.3s; 
       }
-      .review-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22,143,4,0.45); }
+      .details-btn:hover { 
+        background: rgba(59, 130, 246, 0.2); 
+        border-color: #60a5fa;
+        transform: translateY(-2px); 
+      }
+      .details-btn:active { transform: scale(0.98); }
     </style>
   `
 }

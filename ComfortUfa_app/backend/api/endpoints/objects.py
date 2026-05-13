@@ -570,3 +570,62 @@ async def remove_from_favorites(
         db.rollback()
         print(f"Ошибка удаления из избранного: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)}")
+
+
+@router.get("/objects/{object_id}", response_model=ObjectWithTypeName)
+async def get_object_by_id(
+    object_id: int,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получить полный объект по ID (для модалки)"""
+    try:
+        query = text("""
+            SELECT 
+                o.id_object, o.name, o.address,
+                t.name_type as type_name,
+                ST_Y(o.location::geometry) as lat, 
+                ST_X(o.location::geometry) as lon,
+                o.id_status, o.created_at, o.created_by,
+                (SELECT AVG(r.rating) FROM reviews r 
+                 WHERE r.id_object = o.id_object AND r.id_status = 2) as rating_avg,
+                (SELECT COUNT(*) FROM reviews r 
+                 WHERE r.id_object = o.id_object AND r.id_status = 2) as rating_count
+            FROM public.objects o
+            LEFT JOIN public.type_object t ON o.id_type = t.id_type
+            WHERE o.id_object = :object_id AND o.id_status = 2
+        """)
+        
+        row = db.execute(query, {"object_id": object_id}).first()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Объект не найден")
+        
+        # Проверяем избранное
+        is_bookmarked = False
+        if current_user:
+            fav = db.execute(
+                text("SELECT 1 FROM favorites WHERE id_user = :uid AND id_object = :oid"),
+                {"uid": current_user.id_user, "oid": object_id}
+            ).first()
+            is_bookmarked = bool(fav)
+        
+        return {
+            "id_object": row.id_object,
+            "name": row.name,
+            "type_name": row.type_name,
+            "address": row.address,
+            "coords": [float(row.lat), float(row.lon)],
+            "id_status": row.id_status,
+            "created_at": row.created_at,
+            "created_by": row.created_by,
+            "is_bookmarked": is_bookmarked,
+            "rating_avg": float(row.rating_avg) if row.rating_avg else None,
+            "rating_count": row.rating_count or 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[get_object_by_id] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка сервера: {str(e)[:200]}")

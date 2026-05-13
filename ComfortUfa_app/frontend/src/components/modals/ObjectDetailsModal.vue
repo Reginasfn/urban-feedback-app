@@ -102,7 +102,6 @@
 
         <Transition name="slide-fade">
           <div v-if="showReviewForm" class="review-form-card">
-            <!-- Category selection as buttons -->
             <div class="form-group">
               <label class="form-label">Категория отзыва *</label>
               <div class="category-buttons">
@@ -126,6 +125,11 @@
                   v-model="reviewForm.rating" 
                   :cancel="false"
                   class="custom-rating"
+                  :pt="{
+                        icon: { 
+                        style: 'width: 40px; height: 40px;' 
+                        }
+                    }"
                 />
                 <span class="rating-value">{{ reviewForm.rating }} из 5</span>
               </div>
@@ -142,7 +146,6 @@
               />
             </div>
 
-            <!-- Photo attachment -->
             <div class="form-group">
               <label class="form-label">Фотографии объекта</label>
               <div class="photo-upload-area" @click="triggerFileInput" @dragover.prevent @drop.prevent="handleDrop">
@@ -217,20 +220,10 @@
                     severity="info"
                   />
 
-                  <Rating 
-                    v-model="reviewForm.rating" 
+                  <Rating
+                    :modelValue="review.rating"
+                    readonly
                     :cancel="false"
-                    class="custom-rating"
-                    :pt="{
-                      icon: {
-                        class: 'text-yellow-400',
-                        style: 'color: #fbbf24 !important; fill: #fbbf24 !important;'
-                      },
-                      iconActive: {
-                        class: 'text-yellow-400',
-                        style: 'color: #fbbf24 !important; fill: #fbbf24 !important;'
-                      }
-                    }"
                   />
 
                   <span class="review-date">
@@ -242,7 +235,6 @@
 
             <p class="review-text">{{ review.text }}</p>
             
-            <!-- Review photos -->
             <div v-if="review.photos?.length" class="review-photos">
               <img 
                 v-for="(photo, index) in review.photos" 
@@ -268,10 +260,8 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue'
-
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
-import Dropdown from 'primevue/dropdown'
 import Textarea from 'primevue/textarea'
 import ProgressSpinner from 'primevue/progressspinner'
 import Avatar from 'primevue/avatar'
@@ -283,12 +273,7 @@ const props = defineProps({
   visible: { type: Boolean, default: false }
 })
 
-const emit = defineEmits([
-  'update:visible',
-  'close',
-  'go-to-map',
-  'review-submitted'
-])
+const emit = defineEmits(['update:visible', 'close', 'go-to-map', 'review-submitted'])
 
 const reviews = ref([])
 const reviewsLoading = ref(false)
@@ -317,18 +302,11 @@ const canSubmitReview = computed(() =>
 )
 
 const openReviewForm = () => {
-  reviewForm.value = {
-    category: null,
-    rating: 0,
-    text: '',
-    photos: []
-  }
+  reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
   showReviewForm.value = true
 }
 
-const triggerFileInput = () => {
-  fileInput.value?.click()
-}
+const triggerFileInput = () => fileInput.value?.click()
 
 const handleFileSelect = (event) => {
   const files = Array.from(event.target.files || [])
@@ -363,20 +341,13 @@ const addPhotos = (files) => {
   }
 }
 
-const removePhoto = (index) => {
-  reviewForm.value.photos.splice(index, 1)
-}
+const removePhoto = (index) => reviewForm.value.photos.splice(index, 1)
 
 const loadReviews = async () => {
   if (!props.object?.id_object) return
-
   reviewsLoading.value = true
-
   try {
-    const response = await fetch(
-      `/api/objects/${props.object.id_object}/ratings?limit=50&offset=0`
-    )
-
+    const response = await fetch(`/api/objects/${props.object.id_object}/ratings?limit=50&offset=0`)
     const data = await response.json()
     reviews.value = data.items || data || []
   } catch (error) {
@@ -411,21 +382,13 @@ const onUpdateVisible = (value) => {
 
 const getInitials = (name) => {
   if (!name) return 'U'
-  return name
-    .split(' ')
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  return name.split(' ').map((word) => word[0]).join('').toUpperCase().slice(0, 2)
 }
 
 const formatDate = (date) => {
   if (!date) return ''
-
   return new Date(date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
+    day: '2-digit', month: 'long', year: 'numeric'
   })
 }
 
@@ -436,22 +399,14 @@ const formatExtraKey = (key) => {
     website: 'Сайт',
     price_range: 'Ценовой диапазон'
   }
-
   return labels[key] || key
 }
 
-const openPhotoViewer = (url) => {
-  window.open(url, '_blank')
-}
+const openPhotoViewer = (url) => window.open(url, '_blank')
 
-watch(
-  () => props.visible,
-  (value) => {
-    if (value && props.object?.id_object) {
-      loadReviews()
-    }
-  }
-)
+watch(() => props.visible, (value) => {
+  if (value && props.object?.id_object) loadReviews()
+})
 </script>
 
 <style scoped>
@@ -524,17 +479,16 @@ watch(
   margin-top: -7px;
 }
 
-/* === OBJECT TYPE BADGE — В СТИЛЕ РЕФЕРЕНСА === */
+/* === OBJECT TYPE BADGE — СТИЛЬНЫЙ ФИОЛЕТОВЫЙ === */
 .object-type-badge {
   display: inline-block;
   margin-bottom: 18px;
-  padding: 10px 16px;
+  padding: 10px 20px;
   border-radius: 12px;
-  background: rgba(22, 143, 4, 0.08);
-  border: 1px solid rgba(22, 143, 4, 0.2);
-  color: #168f04;
+  color: #3e7c48;
   font-weight: 700;
   font-size: 13px;
+  border: 1px solid #007306;
 }
 
 .info-row {
@@ -580,7 +534,7 @@ watch(
   color: #0f172a;
 }
 
-/* === BUTTON STYLES — ИЗ РЕФЕРЕНСА === */
+/* === BUTTON STYLES === */
 :deep(.p-button) { 
   border-radius: 10px !important; 
   font-weight: 600 !important;
@@ -627,7 +581,6 @@ watch(
 :deep(.p-button .p-button-loading-icon) {
   margin-right: 6px !important;
 }
-/* === END BUTTON STYLES === */
 
 .section-header {
   display: flex;
@@ -669,89 +622,94 @@ watch(
   gap: 10px;
 }
 
-/* === CATEGORY BUTTONS — В СТИЛЕ КНОПОК РЕФЕРЕНСА === */
+/* === CATEGORY BUTTONS === */
 .category-buttons {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .category-btn {
-  padding: 0.625rem 1.25rem;
-  border-radius: 10px;
-  border: 2px solid #e2e8f0;
-  background: #fff;
-  color: #334155;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: #f8fafc;
+  color: #475569;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .category-btn:hover {
-  border-color: #168f04;
-  background: rgba(22, 143, 4, 0.08);
-  color: #168f04;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.category-btn.active {
-  background: linear-gradient(135deg, #168f04, #007306);
-  border-color: #168f04;
+/* Проблема — оранжево-красный */
+.category-btn:nth-child(1) {
+  background: linear-gradient(135deg, #fec7c71a, #fd8a8af0);
+  color: #92400e;
+}
+
+.category-btn:nth-child(1):hover {
+  box-shadow: 0 4px 14px rgba(245, 11, 11, 0.2);
+}
+
+.category-btn:nth-child(1).active {
+  background: linear-gradient(135deg, #f50b0b4c, #d90606e9);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(22,143,4,0.4);
+  box-shadow: 0 4px 14px rgba(245, 11, 11, 0.388);
+}
+/* Предложение — синий */
+.category-btn:nth-child(2) {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+  color: #1e40af;
 }
 
-.category-btn.active:hover {
-  box-shadow: 0 6px 20px rgba(22,143,4,0.55);
-  transform: translateY(-1px);
+.category-btn:nth-child(2):hover {
+  background: linear-gradient(135deg, #bfdbfe, #93c5fd);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
 }
 
-/* === RATING STYLES — ЖЁЛТЫЕ ЗВЁЗДЫ, ГАРАНТИРОВАННО ✅ === */
+.category-btn:nth-child(2).active {
+  background: linear-gradient(135deg, #3b83f68c, #2564ebe2);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.45);
+}
+
+/* Похвала — зелёный */
+.category-btn:nth-child(3) {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #047857;
+}
+
+.category-btn:nth-child(3):hover {
+  background: linear-gradient(135deg, #a7f3d0, #6ee7b7);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.category-btn:nth-child(3).active {
+  background: linear-gradient(135deg, #10b98183, #059669);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+}
+
+/* === RATING === */
 .rating-wrapper {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* Все звёзды по умолчанию — светло-серые */
-:deep(.custom-rating .p-rating-item .p-rating-icon),
-:deep(.custom-rating .p-rating-icon.pi-star),
-:deep(.custom-rating .p-rating-icon) {
-  color: #cbd5e1 !important;
-  font-size: 24px !important;
-  transition: all 0.15s ease !important;
-}
-
-/* Активные звёзды — ТОЧНО ЖЁЛТЫЕ */
-:deep(.custom-rating .p-rating-item.p-rating-item-active .p-rating-icon),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon.pi-star-fill),
-:deep(.custom-rating .p-rating-icon.pi-star-fill),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon) {
-  color: #f59e0b !important;
-  fill: #f59e0b !important;
-}
-
-/* При наведении — тоже жёлтые */
-:deep(.custom-rating .p-rating-item:hover .p-rating-icon) {
-  transform: scale(1.1) !important;
-  color: #f59e0b !important;
-}
-
-/* Глобальное переопределение для PrimeVue Rating */
-:deep(.p-rating .p-rating-item-active .p-rating-icon),
-:deep(.p-rating .p-rating-icon.pi-star-fill) {
-  color: #f59e0b !important;
-  fill: #f59e0b !important;
-}
-
 .rating-value {
   font-weight: 700;
-  font-size: 15px;
-  color: #f59e0b !important;
+  font-size: 16px;
+  color: #fbbf24;
 }
-/* === END RATING STYLES === */
 
-/* Photo upload styles */
+/* Photo upload */
 .photo-upload-area {
   border: 2px dashed #cbd5e1;
   border-radius: 14px;
@@ -763,13 +721,11 @@ watch(
 }
 
 .photo-upload-area:hover {
-  border-color: #168f04;
-  background: rgba(22, 143, 4, 0.08);
+  border-color: #10b981;
+  background: #f0fdf4;
 }
 
-.file-input {
-  display: none;
-}
+.file-input { display: none; }
 
 .photo-upload-placeholder {
   display: flex;
@@ -781,12 +737,10 @@ watch(
 
 .photo-upload-placeholder i {
   font-size: 32px;
-  color: #168f04;
+  color: #10b981;
 }
 
-.photo-upload-placeholder small {
-  color: #94a3b8;
-}
+.photo-upload-placeholder small { color: #94a3b8; }
 
 .photo-preview-grid {
   display: grid;
@@ -824,11 +778,8 @@ watch(
   font-size: 12px;
 }
 
-.photo-remove-btn:hover {
-  background: rgba(0,0,0,0.8);
-}
+.photo-remove-btn:hover { background: rgba(0,0,0,0.8); }
 
-/* Review photos display */
 .review-photos {
   display: flex;
   gap: 8px;
@@ -845,9 +796,7 @@ watch(
   transition: transform 0.2s;
 }
 
-.review-photo:hover {
-  transform: scale(1.05);
-}
+.review-photo:hover { transform: scale(1.05); }
 
 .reviews-list {
   display: flex;
@@ -869,7 +818,7 @@ watch(
 }
 
 .review-avatar {
-  background: linear-gradient(135deg, #168f04, #007306);
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
 }
 
@@ -926,163 +875,54 @@ watch(
   overflow: hidden;
 }
 
-:deep(.p-dialog-header) {
-  display: none;
-}
-
-:deep(.p-dialog-content) {
-  padding: 0;
-}
+:deep(.p-dialog-header) { display: none; }
+:deep(.p-dialog-content) { padding: 0; }
 
 :deep(.p-inputtext),
 :deep(.p-dropdown),
 :deep(.p-inputtextarea) {
-  border-radius: 12px;
-  border: 2px solid #e2e8f0;
-  transition: border-color 0.2s;
-  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
 }
 
 :deep(.p-inputtext:focus),
 :deep(.p-dropdown:focus),
 :deep(.p-inputtextarea:focus) {
-  border-color: #168f04;
-  box-shadow: 0 0 0 4px rgba(22,143,4,0.12);
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
 }
 
-/* УБРАНО: старое правило, которое могло конфликтовать */
-/* :deep(.p-rating .p-rating-item-active .p-rating-icon) { color: #168f04; } */
+/* === PRIMEVUE RATING — CSS VARIABLES (РАБОТАЕТ!) === */
+:deep(.p-rating) {
+  --p-rating-icon-active-color: #fbbf24 !important;
+  --p-rating-icon-color: #cbd5e1 !important;
+  --p-rating-icon-hover-color: #fbbf24 !important;
+}
+
+/* === УВЕЛИЧЕННЫЕ ЗВЁЗДЫ — SVG РАЗМЕР === */
+:deep(.p-rating .p-rating-icon) {
+  width: 35px !important;
+  height: 25px !important;
+  font-size: 40px !important;  /* на всякий случай, если шрифт */
+}
 
 @media (max-width: 768px) {
-  .details-wrapper {
-    padding: 16px;
-  }
-
-  .object-card,
-  .reviews-section {
-    padding: 20px;
-    border-radius: 22px;
-  }
-
-  .hero-header,
-  .section-header,
-  .form-actions {
+  .details-wrapper { padding: 16px; }
+  .object-card, .reviews-section { padding: 20px; border-radius: 22px; }
+  .hero-header, .section-header, .form-actions {
     flex-direction: column;
     align-items: stretch;
   }
-
-  .object-info-row {
-    flex-direction: column;
-  }
-
-  .object-info-right {
-    width: 100%;
-    justify-content: center;
-  }
-
+  .object-info-row { flex-direction: column; }
+  .object-info-right { width: 100%; justify-content: center; }
   .btn-map :deep(.p-button),
   .review-btn :deep(.p-button),
   :deep(.form-actions .p-button) {
     width: 100% !important;
     min-width: unset !important;
   }
-
-  .category-buttons {
-    flex-direction: column;
-  }
-
-  .category-btn {
-    width: 100%;
-  }
-
-  .hero-title {
-    font-size: 1.5rem;
-  }
-}
-
-/* === ПРИНУДИТЕЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ЦВЕТА ЗВЁЗД === */
-:deep(.p-rating .p-rating-icon) {
-  color: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
-}
-
-:deep(.p-rating .p-rating-icon.pi-star-fill),
-:deep(.p-rating .p-rating-item-active .p-rating-icon),
-:deep(.p-rating-item-active .p-rating-icon.pi-star-fill) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-  text-shadow: none !important;
-}
-
-/* Для состояния hover */
-:deep(.p-rating .p-rating-item:hover .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-/* Глобальное переопределение для ВСЕХ рейтингов */
-:global(.p-rating .p-rating-icon.pi-star-fill) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-:global(.p-rating .p-rating-item-active .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-/* === ОКОНЧАТЕЛЬНОЕ РЕШЕНИЕ ДЛЯ ЖЁЛТЫХ ЗВЁЗД === */
-
-/* Переопределяем CSS-переменные PrimeVue */
-:deep(.p-rating) {
-  --p-rating-icon-active-color: #fbbf24 !important;
-  --p-rating-icon-color: #cbd5e1 !important;
-}
-
-/* Максимально специфичные селекторы */
-:deep(.p-rating .p-rating-item .p-rating-icon.pi-star),
-:deep(.p-rating .p-rating-item .p-rating-icon.pi-star-fill),
-:deep(.p-rating .p-rating-item-active .p-rating-icon),
-:deep(.custom-rating .p-rating-item .p-rating-icon),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon) {
-  color: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
-  background: transparent !important;
-}
-
-/* АКТИВНЫЕ ЗВЁЗДЫ — ЖЁЛТЫЕ */
-:deep(.p-rating .p-rating-item-active .p-rating-icon.pi-star-fill),
-:deep(.p-rating .p-rating-item-active .p-rating-icon.pi-star),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon.pi-star-fill),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon),
-:deep(.p-rating .p-rating-icon.pi-star-fill:not(.p-rating-item)) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-  background: transparent !important;
-}
-
-/* Hover состояние */
-:deep(.p-rating .p-rating-item:hover .p-rating-icon),
-:deep(.custom-rating .p-rating-item:hover .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-  transform: scale(1.1);
-}
-
-/* Глобальные стили для ВСЕХ рейтингов на странице */
-:global(.p-rating .p-rating-icon.pi-star-fill),
-:global(.p-rating .p-rating-item-active .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-/* Если PrimeVue использует inline стили */
-:deep(.p-rating .p-rating-item .p-rating-icon[style*="color"]),
-:deep(.p-rating .p-rating-item-active .p-rating-icon[style*="color"]) {
-  color: #cbd5e1 !important;
-}
-
-:deep(.p-rating .p-rating-item-active .p-rating-icon[style*="color"]) {
-  color: #fbbf24 !important;
+  .category-buttons { flex-direction: column; }
+  .category-btn { width: 100%; }
+  .hero-title { font-size: 1.5rem; }
 }
 </style>

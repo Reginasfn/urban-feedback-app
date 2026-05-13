@@ -16,7 +16,10 @@
   <div id="app">
     <AppHeader />
     
-    <main class="main-content" :class="{ 'map-page': $route.path === '/map'}">
+    <main class="main-content" :class="{ 
+      'map-page': $route.path === '/map',
+      'favorites-page': $route.path === '/favorites' 
+    }">
       <router-view />
     </main>
     
@@ -60,14 +63,22 @@
     padding: 20px;
   }
 
-  .main-content:not(.map-page){
+  .main-content {
+    flex: 1;
+    padding: 20px;
     padding-top: 140px;
   }
 
-  .main-content.map-page{
+  /* Карта */
+  .main-content.map-page {
     padding-top: 50px;
     padding-bottom: 300px;
+  }
 
+  /* Избранное */
+  .main-content.favorites-page {
+    padding-top: 50px; 
+    padding-bottom: 300px; 
   }
 
 </style>

@@ -24,29 +24,26 @@ export default {
     },
     computed: {
         headerClass() {
-            const isMapPage = this.$route.path === '/map'
+            const isSpecialPage = this.$route.path === '/map' || this.$route.path === '/favorites'
+            
             return {
                 'header': true,
-                'header--fixed': !isMapPage,
-                'header--sticky': isMapPage
+                'header--fixed': !isSpecialPage,  // ✅ Фиксируем ТОЛЬКО на обычных страницах
+                'header--sticky': isSpecialPage   // ✅ Статичная на карте и в избранном
             }
         }
     },
     mounted() {
-        // 👇 ПРОВЕРЯЕМ АВТОРИЗАЦИЮ ПРИ ЗАГРУЗКЕ
         this.checkAuth()
         
-        // 👇 Слушаем события изменения авторизации (для других компонентов)
         window.addEventListener('auth-change', this.handleAuthChange)
     },
     
     beforeUnmount() {
-        // 👇 Очищаем слушатель
         window.removeEventListener('auth-change', this.handleAuthChange)
     },
 
     methods: {
-        // 👇 Проверка авторизации при загрузке
         checkAuth() {
             const token = localStorage.getItem('auth_token')
             const user = localStorage.getItem('user')
@@ -58,30 +55,26 @@ export default {
                 } catch {
                     this.currentUser = null
                 }
-                console.log('✅ Пользователь авторизован:', this.currentUser)
+                console.log('Пользователь авторизован:', this.currentUser)
             } else {
                 this.isAuth = false
                 this.currentUser = null
-                console.log('❌ Пользователь не авторизован')
+                console.log('Пользователь не авторизован')
             }
         },
 
-        // 👇 Обработчик события изменения авторизации (для синхронизации с другими компонентами)
         handleAuthChange(event) {
             const newAuthState = event.detail.isAuthenticated
             
-            // Обновляем только если состояние реально изменилось
             if (this.isAuth !== newAuthState) {
                 this.isAuth = newAuthState
                 
                 if (!newAuthState) {
-                    // При выходе очищаем данные
                     this.currentUser = null
                     if (this.$route.path !== '/' && this.$route.path !== '/map') {
                         this.$router.push('/')
                     }
                 }
-                // При входе currentUser уже установлен в handleLogin — не перезаписываем
             }
         },
 
@@ -109,12 +102,10 @@ export default {
             }
         },
 
-        // 👇 ОБНОВЛЁННЫЙ handleLogin — гарантированное обновление состояния
         async handleLogin(credentials) {
-            console.log('🔑 handleLogin вызван с:', credentials)
+            console.log('handleLogin вызван с:', credentials)
             
             try {
-                // 🔐 Данные уже сохранены в LoginModal, берём из localStorage
                 const token = localStorage.getItem('auth_token')
                 const userData = localStorage.getItem('user')
                 
@@ -124,14 +115,11 @@ export default {
                 
                 const user = JSON.parse(userData)
                 
-                // 👇 ПРЯМО обновляем локальное состояние
                 this.isAuth = true
                 this.currentUser = user
                 
-                // 👇 Ждём обновления Vue
                 await this.$nextTick()
                 
-                // 👇 Сообщаем другим компонентам
                 window.dispatchEvent(new CustomEvent('auth-change', { 
                     detail: { isAuthenticated: true } 
                 }))
@@ -152,18 +140,14 @@ export default {
             }
         },
 
-        // 👇 ОБНОВЛЁННЫЙ handleLogout — тоже с $nextTick
         handleLogout() {
             localStorage.removeItem('auth_token')
             localStorage.removeItem('user')
             
-            // 👇 1. Сначала обновляем локальное состояние
             this.isAuth = false
             this.currentUser = null
             
-            // 👇 2. Ждём обновления шаблона
             this.$nextTick(() => {
-                // 👇 3. Потом сообщаем другим компонентам
                 window.dispatchEvent(new CustomEvent('auth-change', { 
                     detail: { isAuthenticated: false } 
                 }))
@@ -300,7 +284,6 @@ export default {
 </template>
 
 <style scoped>
-/* ===================== ОБЩИЕ СТИЛИ ===================== */
 .header {
     background: rgba(170, 182, 177, 0.2); 
     backdrop-filter: blur(20px);
