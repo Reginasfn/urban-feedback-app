@@ -62,8 +62,7 @@ export const createBalloonContent = (obj, index, type, options = {}) => {
       
       <div class="object-card-footer">
         <span class="object-type">${displayType}</span>
-        <!-- 🔥 Кнопка "Подробнее" вместо "Добавить отзыв" -->
-        <button class="details-btn" onclick="window.__openObjectDetails?.('${safeId}')">
+        <button class="details-btn" onclick="event.stopPropagation(); window.__openObjectDetails?.('${safeId}')">
           <i class="pi pi-info-circle"></i> Подробнее
         </button>
       </div>

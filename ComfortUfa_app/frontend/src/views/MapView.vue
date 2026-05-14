@@ -233,6 +233,7 @@
     <ObjectDetailsModal
       v-model:visible="modalVisible"
       :object="modalObject"
+      @object-updated="handleObjectUpdated"
       @close="onModalClose"
       @review-submitted="onReviewSubmitted"
       @go-to-map="onGoToMap"
@@ -532,7 +533,9 @@ const {
 } = useSearch({ api, navigateToObject, setError })
 
 const initMap = () => new Promise((resolve, reject) => {
+
   if (!mapContainer.value) { reject(new Error('Контейнер карты не найден')); return }
+
   const setupMap = () => createMapInstance().then(resolve).catch(reject)
   if (window.ymaps) window.ymaps.ready(setupMap)
   else {
@@ -558,11 +561,6 @@ const createMapInstance = () => new Promise((resolve, reject) => {
         if (isAddingMode.value) { handleMapClick(e, YANDEX_API_KEY); return }
         const target = e.get('target')
         if (!target?.options?.get('isOurObject') && target !== clusterer) e.preventDefault()
-      })
-      
-      map.events.add('balloonopen', (e) => {
-        const target = e.get('target')
-        if (!target?.options?.get('isOurObject')) { map.balloon.close(); e.preventDefault() }
       })
       
       map.events.add('actionend', () => {
@@ -606,7 +604,6 @@ const getMapBbox = () => {
   }
 }
 
-// 🔥 ФУНКЦИЯ ОТКРЫТИЯ МОДАЛКИ (добавлено!)
 const openObjectDetails = async (objectId) => {
   try {
     modalObject.value = null
@@ -621,12 +618,141 @@ const openObjectDetails = async (objectId) => {
   }
 }
 
-// 🔥 РЕГИСТРАЦИЯ ГЛОБАЛЬНОГО КОЛБЭКА (добавлено!)
 window.__openObjectDetails = openObjectDetails
 
-// 🔥 ОБРАБОТЧИКИ СОБЫТИЙ МОДАЛКИ (добавлено!)
-const onModalClose = () => {
+const onModalClose = async () => {
+  const updatedData = { ...modalObject.value }
   modalObject.value = null
+  
+  if (!updatedData?.id_object || !map || !clusterer) return
+
+  const objectId = updatedData.id_object
+
+  // Поиск метки в кластере или activePlacemark
+  let targetPlacemark = null
+  let isInCluster = false
+  
+  if (clusterer.getGeoObjects) {
+    const placemarks = clusterer.getGeoObjects()
+    targetPlacemark = placemarks.find(p => 
+      Number(p.options?.get('objectId')) === Number(objectId)
+    )
+    isInCluster = !!targetPlacemark
+  }
+  
+  if (!targetPlacemark && activePlacemark && 
+      Number(activePlacemark.options?.get('objectId')) === Number(objectId)) {
+    targetPlacemark = activePlacemark
+  }
+
+  if (!targetPlacemark) return
+
+  // Запоминаем состояние балуна
+  const wasOpen = targetPlacemark.balloon?.isOpen()
+  
+  try {
+    // Инвалидируем кэш рейтинга для получения свежих данных
+    if (typeof invalidateRating === 'function') {
+      invalidateRating(objectId)
+    }
+
+    // Загружаем свежий рейтинг с фолбэком на данные из модалки
+    let apiRating = { avg: null, count: 0 }
+    try {
+      apiRating = await fetchRating(objectId)
+    } catch (e) {
+      console.warn('[ModalClose] API fetch failed, using modal fallback')
+    }
+
+    // Приоритет: данные из API, если есть; иначе — данные из модалки
+    const finalAvg = apiRating?.avg ?? updatedData.rating_avg
+    const finalCount = apiRating?.count ?? updatedData.rating_count
+
+    // Сохраняем исходные данные метки
+    const coords = targetPlacemark.geometry.getCoordinates()
+    const hint = targetPlacemark.properties.get('hintContent')
+    const objectType = targetPlacemark.options.get('objectType') || updatedData.type_name
+    const objectIndex = targetPlacemark.__objectIndex || 0
+    const isBookmarked = bookmarkedObjects.value.has(objectId)
+
+    // Формируем обновлённые данные
+    const updatedObjectData = {
+      ...targetPlacemark.__objectData,
+      rating: finalAvg,
+      ratingCount: finalCount,
+      rating_avg: finalAvg,
+      rating_count: finalCount
+    }
+
+    // Генерируем новый контент балуна
+    const newContent = createBalloonContent(
+      updatedObjectData,
+      objectIndex,
+      objectType,
+      {
+        isBookmarked,
+        iconClass: getCategoryIcon(objectType)
+      }
+    )
+
+    // Удаляем старую метку
+    if (isInCluster) {
+      clusterer.remove(targetPlacemark)
+    } else if (map.geoObjects) {
+      map.geoObjects.remove(targetPlacemark)
+    }
+
+    // Небольшая задержка для стабилизации состояния карты
+    setTimeout(() => {
+      // Создаём новую метку с обновлёнными данными
+      const newPlacemark = new window.ymaps.Placemark(
+        coords,
+        {
+          balloonContent: newContent,
+          hintContent: hint
+        },
+        {
+          preset: markerConfig[objectType]?.preset || 'islands#grayCircleIcon',
+          objectId: objectId,
+          objectType: objectType,
+          isOurObject: targetPlacemark.options.get('isOurObject'),
+          zIndex: targetPlacemark.options.get('zIndex') || 100
+        }
+      )
+
+      // Сохраняем ссылки на данные в новой метке
+      newPlacemark.__objectData = updatedObjectData
+      newPlacemark.__objectIndex = objectIndex
+
+      // Добавляем метку на карту
+      if (isInCluster) {
+        clusterer.add(newPlacemark)
+      } else if (map.geoObjects) {
+        map.geoObjects.add(newPlacemark)
+      }
+
+      // Обновляем ссылку на активную метку
+      if (activePlacemark === targetPlacemark) {
+        activePlacemark = newPlacemark
+      }
+
+      // Открываем балун на новой метке, если он был открыт
+      if (wasOpen) {
+        setTimeout(() => {
+          try {
+            if (newPlacemark.balloon) {
+              newPlacemark.balloon.open()
+            }
+          } catch (e) {
+            console.error('[ModalClose] Failed to open balloon:', e)
+          }
+        }, 50)
+      }
+    }, 50)
+
+  } catch (err) {
+    console.error('[ModalClose] Error:', err)
+  }
 }
 
 const onReviewSubmitted = (data) => {
@@ -776,6 +902,39 @@ const handleObjectSubmit = async (payload) => {
 
 const handleObjectCancel = () => cancelAddObject()
 const handleObjectError = ({ message }) => setError(message)
+
+const handleObjectUpdated = (updatedObject) => {
+  console.log('[handleObjectUpdated] Called with:', { 
+    id: updatedObject?.id_object, 
+    rating_avg: updatedObject?.rating_avg 
+  })
+  
+  // Просто сохраняем данные в модалку
+  modalObject.value = updatedObject
+  
+  if (!map || !clusterer || !updatedObject?.id_object) return
+
+  const objectId = updatedObject.id_object
+  
+  // 🚫 НЕ ЗАКРЫВАЕМ/НЕ ОТКРЫВАЕМ БАЛУН ЗДЕСЬ! Это вызывает crash Yandex API
+  const updatePlacemarkData = (placemark) => {
+    const pid = placemark.options?.get('objectId')
+    if (Number(pid) !== objectId) return
+
+    console.log('[handleObjectUpdated] Updating internal data for:', objectId)
+    // Обновляем только внутренние данные, визуал обновится в onModalClose
+    placemark.__objectData = {
+      ...placemark.__objectData,
+      rating: updatedObject.rating_avg,
+      ratingCount: updatedObject.rating_count,
+      rating_avg: updatedObject.rating_avg,
+      rating_count: updatedObject.rating_count
+    }
+  }
+
+  if (clusterer.getGeoObjects) clusterer.getGeoObjects().forEach(updatePlacemarkData)
+  if (activePlacemark) updatePlacemarkData(activePlacemark)
+}
 
 onMounted(async () => {
   const loadUserFavorites = async () => {

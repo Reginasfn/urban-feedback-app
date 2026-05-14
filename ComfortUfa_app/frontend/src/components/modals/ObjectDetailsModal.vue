@@ -1,3 +1,4 @@
+<!-- frontend\src\components\modals\ObjectDetailsModal.vue -->
 <template>
   <Dialog
     :visible="visible"
@@ -214,11 +215,12 @@
                 </div>
 
                 <div class="review-submeta">
-                  <Tag
-                    v-if="review.category_name"
-                    :value="review.category_name"
-                    severity="info"
-                  />
+                  <Tag 
+                        v-if="review.category_name" 
+                        :value="review.category_name" 
+                        :severity="getCategoryColor(review.category).severity"
+                        :class="getCategoryColor(review.category).class"
+                    />
 
                   <Rating
                     :modelValue="review.rating"
@@ -255,11 +257,14 @@
         </div>
       </section>
     </div>
+
+    <!-- ✅ УВЕДОМЛЕНИЯ (как в AppHeader) -->
+    <Toast />
   </Dialog>
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import Textarea from 'primevue/textarea'
@@ -267,13 +272,24 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Avatar from 'primevue/avatar'
 import Rating from 'primevue/rating'
 import Tag from 'primevue/tag'
+import Toast from 'primevue/toast'
+import api from '@/services/api'
+
+import { useToast } from 'primevue/usetoast'
+const toast = useToast()
 
 const props = defineProps({
   object: { type: Object, default: null },
   visible: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:visible', 'close', 'go-to-map', 'review-submitted'])
+const emit = defineEmits([
+  'update:visible', 
+  'close', 
+  'go-to-map', 
+  'review-submitted',
+  'object-updated'
+])
 
 const reviews = ref([])
 const reviewsLoading = ref(false)
@@ -282,10 +298,24 @@ const submittingReview = ref(false)
 const fileInput = ref(null)
 
 const reviewCategories = [
-  { label: 'Проблема', value: 'Проблема' },
-  { label: 'Предложение', value: 'Предложение' },
-  { label: 'Похвала', value: 'Похвала' }
+  { label: 'Проблема', value: 'problem' },    
+  { label: 'Предложение', value: 'suggestion' }, 
+  { label: 'Похвала', value: 'praise' }          
 ]
+
+// === НОВОЕ: Цвета для категорий отзывов ===
+const categoryColors = {
+  problem: { severity: 'danger', class: 'category-problem' },
+  suggestion: { severity: 'info', class: 'category-suggestion' },
+  praise: { severity: 'success', class: 'category-praise' }
+}
+
+const getCategoryColor = (categoryValue) => {
+  return categoryColors[categoryValue] || { severity: 'secondary', class: '' }
+}
+
+// === НОВОЕ: Реактивный счётчик отзывов ===
+const reviewsCount = computed(() => reviews.value.length)
 
 const reviewForm = ref({
   category: null,
@@ -343,27 +373,146 @@ const addPhotos = (files) => {
 
 const removePhoto = (index) => reviewForm.value.photos.splice(index, 1)
 
+// Загрузка отзывов с надёжной обработкой ответа
 const loadReviews = async () => {
-  if (!props.object?.id_object) return
+  if (!props.object?.id_object) {
+    console.warn('[loadReviews] No object ID')
+    return
+  }
+
   reviewsLoading.value = true
+
   try {
-    const response = await fetch(`/api/objects/${props.object.id_object}/ratings?limit=50&offset=0`)
-    const data = await response.json()
-    reviews.value = data.items || data || []
+    const response = await api.get(
+      `/reviews/object/${props.object.id_object}`,
+      {
+        params: {
+          limit: 50,
+          offset: 0
+        }
+      }
+    )
+
+    const data = response.data
+
+    // Поддержка разных форматов ответа от бэкенда
+    let reviewsData = []
+    if (Array.isArray(data)) {
+      reviewsData = data
+    } else if (data?.reviews && Array.isArray(data.reviews)) {
+      reviewsData = data.reviews
+    } else if (data?.items && Array.isArray(data.items)) {
+      reviewsData = data.items
+    } else if (data?.data && Array.isArray(data.data)) {
+      reviewsData = data.data
+    }
+
+    // Нормализация полей: гарантируем, что все нужные поля есть
+    reviews.value = reviewsData.map(review => ({
+      id: review.id_review || review.id || review.review_id,
+      user_name: review.user_name || review.nickname || review.author || 'Пользователь',
+      nickname: review.nickname || review.user_name || review.author,
+      rating: review.rating !== undefined ? review.rating : 0,
+      text: review.text || review.comment || review.content || '',
+      created_at: review.created_at || review.date || review.timestamp,
+      category_name: review.category_name || review.category,
+      photos: review.photos || review.images || [],
+      // Сохраняем остальные поля как есть
+      ...review
+    }))
+
   } catch (error) {
-    console.error(error)
+    console.error('[LoadReviews] Error:', error)
     reviews.value = []
   } finally {
     reviewsLoading.value = false
   }
 }
 
+// Обновление данных объекта после изменения отзывов
+const refreshObjectData = async () => {
+  if (!props.object?.id_object) return
+
+  try {
+    const response = await api.get(`/api/objects/${props.object.id_object}`)
+    const updatedObject = response.data
+    emit('object-updated', updatedObject)
+  } catch (error) {
+    console.error('[ObjectDetails] Error refreshing object:', error)
+  }
+}
+
 const submitReview = async () => {
-  emit('review-submitted', {
-    ...reviewForm.value,
-    photos: reviewForm.value.photos.map(p => p.file)
-  })
-  showReviewForm.value = false
+  if (!props.object?.id_object) return
+  submittingReview.value = true
+  
+  try {
+    const token = localStorage.getItem('auth_token') || 
+                  sessionStorage.getItem('auth_token') ||
+                  ''
+    
+    const formData = new FormData()
+    formData.append('id_object', props.object.id_object)
+    formData.append('category', reviewForm.value.category)
+    formData.append('rating', reviewForm.value.rating)
+    formData.append('text', reviewForm.value.text.trim())
+    
+    if (reviewForm.value.photos?.length) {
+      reviewForm.value.photos.forEach((photo) => {
+        formData.append('photo', photo.file)
+      })
+    }
+    
+    const response = await api.post('/reviews/', formData, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+        }
+    })
+
+    const result = response.data
+    
+    reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+    showReviewForm.value = false
+    
+    await loadReviews()
+    await refreshObjectData()
+    
+    emit('review-submitted', { success: true, ...result })
+    
+    toast.add({
+      severity: 'success',
+      summary: 'Успешно!',
+      detail: 'Отзыв отправлен',
+      life: 3000,
+      styleClass: 'my-big-toast'
+    })
+    
+  } catch (error) {
+    console.error('[Review] Error:', error)
+    
+    if (error.message?.includes('Not authenticated')) {
+      toast.add({
+        severity: 'error',
+        summary: 'Ошибка авторизации',
+        detail: 'Пожалуйста, войдите в систему',
+        life: 4000,
+        styleClass: 'my-error-toast'
+      })
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: 'Ошибка',
+        detail: error.message || 'Не удалось отправить отзыв',
+        life: 4000,
+        styleClass: 'my-error-toast'
+      })
+    }
+    
+    emit('review-submitted', { success: false, error: error.message })
+  } finally {
+    submittingReview.value = false
+  }
 }
 
 const onGoToMap = () => {
@@ -387,9 +536,13 @@ const getInitials = (name) => {
 
 const formatDate = (date) => {
   if (!date) return ''
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: '2-digit', month: 'long', year: 'numeric'
-  })
+  try {
+    return new Date(date).toLocaleDateString('ru-RU', {
+      day: '2-digit', month: 'long', year: 'numeric'
+    })
+  } catch {
+    return date
+  }
 }
 
 const formatExtraKey = (key) => {
@@ -404,9 +557,26 @@ const formatExtraKey = (key) => {
 
 const openPhotoViewer = (url) => window.open(url, '_blank')
 
-watch(() => props.visible, (value) => {
-  if (value && props.object?.id_object) loadReviews()
-})
+// Надёжный триггер загрузки: при изменении visible И при наличии object
+watch(
+  () => [props.visible, props.object?.id_object],
+  ([isVisible, objectId]) => {
+    if (isVisible && objectId) {
+      loadReviews()
+    }
+  },
+  { immediate: true }
+)
+
+// Дополнительная гарантия: если объект пришёл позже, чем открылась модалка
+watch(
+  () => props.object?.id_object,
+  (id) => {
+    if (props.visible && id && reviews.value.length === 0 && !reviewsLoading.value) {
+      loadReviews()
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -479,7 +649,6 @@ watch(() => props.visible, (value) => {
   margin-top: -7px;
 }
 
-/* === OBJECT TYPE BADGE — СТИЛЬНЫЙ ФИОЛЕТОВЫЙ === */
 .object-type-badge {
   display: inline-block;
   margin-bottom: 18px;
@@ -534,7 +703,6 @@ watch(() => props.visible, (value) => {
   color: #0f172a;
 }
 
-/* === BUTTON STYLES === */
 :deep(.p-button) { 
   border-radius: 10px !important; 
   font-weight: 600 !important;
@@ -622,7 +790,6 @@ watch(() => props.visible, (value) => {
   gap: 10px;
 }
 
-/* === CATEGORY BUTTONS === */
 .category-buttons {
   display: flex;
   gap: 12px;
@@ -647,7 +814,6 @@ watch(() => props.visible, (value) => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* Проблема — оранжево-красный */
 .category-btn:nth-child(1) {
   background: linear-gradient(135deg, #fec7c71a, #fd8a8af0);
   color: #92400e;
@@ -662,7 +828,7 @@ watch(() => props.visible, (value) => {
   color: #fff;
   box-shadow: 0 4px 14px rgba(245, 11, 11, 0.388);
 }
-/* Предложение — синий */
+
 .category-btn:nth-child(2) {
   background: linear-gradient(135deg, #dbeafe, #bfdbfe);
   color: #1e40af;
@@ -679,7 +845,6 @@ watch(() => props.visible, (value) => {
   box-shadow: 0 4px 14px rgba(59, 130, 246, 0.45);
 }
 
-/* Похвала — зелёный */
 .category-btn:nth-child(3) {
   background: linear-gradient(135deg, #d1fae5, #a7f3d0);
   color: #047857;
@@ -696,7 +861,6 @@ watch(() => props.visible, (value) => {
   box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
 }
 
-/* === RATING === */
 .rating-wrapper {
   display: flex;
   align-items: center;
@@ -709,7 +873,6 @@ watch(() => props.visible, (value) => {
   color: #fbbf24;
 }
 
-/* Photo upload */
 .photo-upload-area {
   border: 2px dashed #cbd5e1;
   border-radius: 14px;
@@ -892,18 +1055,16 @@ watch(() => props.visible, (value) => {
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
 }
 
-/* === PRIMEVUE RATING — CSS VARIABLES (РАБОТАЕТ!) === */
 :deep(.p-rating) {
   --p-rating-icon-active-color: #fbbf24 !important;
   --p-rating-icon-color: #cbd5e1 !important;
   --p-rating-icon-hover-color: #fbbf24 !important;
 }
 
-/* === УВЕЛИЧЕННЫЕ ЗВЁЗДЫ — SVG РАЗМЕР === */
 :deep(.p-rating .p-rating-icon) {
   width: 35px !important;
   height: 25px !important;
-  font-size: 40px !important;  /* на всякий случай, если шрифт */
+  font-size: 40px !important;
 }
 
 @media (max-width: 768px) {
@@ -924,5 +1085,57 @@ watch(() => props.visible, (value) => {
   .category-buttons { flex-direction: column; }
   .category-btn { width: 100%; }
   .hero-title { font-size: 1.5rem; }
+}
+
+:deep(.my-big-toast) {
+  min-width: 320px !important;
+  font-size: 14px !important;
+}
+
+:deep(.my-error-toast) {
+  border-left: 4px solid #dc2626 !important;
+}
+
+:deep(.my-info-toast) {
+  border-left: 4px solid #3b82f6 !important;
+}
+
+.review-card :deep(.p-rating .p-rating-icon) {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 18px !important;
+}
+
+.review-card :deep(.p-rating) {
+  gap: 2px !important;
+}
+
+/* === Цвета для категорий отзывов === */
+.category-problem {
+  background: linear-gradient(135deg, #fee2e2, #fecaca) !important;
+  color: #b91c1c !important;
+  border-color: #f87171 !important;
+  font-weight: 600 !important;
+}
+
+.category-suggestion {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe) !important;
+  color: #1e40af !important;
+  border-color: #60a5fa !important;
+  font-weight: 600 !important;
+}
+
+.category-praise {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0) !important;
+  color: #047857 !important;
+  border-color: #34d399 !important;
+  font-weight: 600 !important;
+}
+
+/* === Плавное обновление счётчика === */
+.section-header p {
+  transition: all 0.2s ease;
+  font-weight: 500;
+  color: #64748b;
 }
 </style>

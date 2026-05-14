@@ -1,10 +1,10 @@
+# backend\api\endpoints\reviews.py
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import os
 
-# 👇 Относительные импорты
 from ..database import get_db_connection
 from ..utils.auth import get_current_user
 

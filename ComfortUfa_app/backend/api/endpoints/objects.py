@@ -12,7 +12,6 @@ from api.utils.auth import get_current_active_user
 
 router = APIRouter(prefix="/api", tags=["Объекты"])
 
-
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 
@@ -84,14 +83,11 @@ async def get_optional_current_user(
         user.is_active = True
 
         print(f"[get_optional_current_user] Authenticated user: {user.id_user}")
-
         return user
-
     except JWTError as e:
         print(f"[get_optional_current_user] Invalid JWT token: {e}")
         db.rollback()
         return None
-
     except Exception as e:
         print(f"[get_optional_current_user] Not authenticated: {e}")
         db.rollback()  # ОБЯЗАТЕЛЬНО сбрасываем failed transaction

@@ -21,8 +21,6 @@ import Textarea from 'primevue/textarea'
 // ===== ГЛОБАЛЬНЫЕ СТИЛИ =====
 import './styles/toasts.css'
 
-// import './assets/primevue-rating-fix.css'
-
 // ===== 🔥 ГЛОБАЛЬНОЕ СОСТОЯНИЕ МОДАЛКИ =====
 export const modalState = {
   visible: ref(false),
