@@ -145,6 +145,9 @@
                 class="w-full"
                 placeholder="Опишите ваше мнение об объекте..."
               />
+              <small class="form-hint">
+                Отзывы проходят автоматическую проверку на соответствие правилам
+              </small>
             </div>
 
             <div class="form-group">
@@ -216,11 +219,13 @@
 
                 <div class="review-submeta">
                   <Tag 
-                        v-if="review.category_name" 
-                        :value="review.category_name" 
-                        :severity="getCategoryColor(review.category).severity"
-                        :class="getCategoryColor(review.category).class"
-                    />
+                    v-if="review.category_name" 
+                    :value="review.category_name" 
+                    :severity="getCategoryColor(review.category).severity"
+                    :class="getCategoryColor(review.category).class"
+                  >
+                    {{ review.category_name }}
+                  </Tag>
 
                   <Rating
                     :modelValue="review.rating"
@@ -258,13 +263,13 @@
       </section>
     </div>
 
-    <!-- ✅ УВЕДОМЛЕНИЯ (как в AppHeader) -->
+    <!-- УВЕДОМЛЕНИЯ -->
     <Toast />
   </Dialog>
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed } from 'vue'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import Textarea from 'primevue/textarea'
@@ -303,7 +308,7 @@ const reviewCategories = [
   { label: 'Похвала', value: 'praise' }          
 ]
 
-// === НОВОЕ: Цвета для категорий отзывов ===
+// Цвета для категорий отзывов
 const categoryColors = {
   problem: { severity: 'danger', class: 'category-problem' },
   suggestion: { severity: 'info', class: 'category-suggestion' },
@@ -314,7 +319,7 @@ const getCategoryColor = (categoryValue) => {
   return categoryColors[categoryValue] || { severity: 'secondary', class: '' }
 }
 
-// === НОВОЕ: Реактивный счётчик отзывов ===
+// Реактивный счётчик отзывов
 const reviewsCount = computed(() => reviews.value.length)
 
 const reviewForm = ref({
@@ -373,12 +378,9 @@ const addPhotos = (files) => {
 
 const removePhoto = (index) => reviewForm.value.photos.splice(index, 1)
 
-// Загрузка отзывов с надёжной обработкой ответа
+// Загрузка отзывов
 const loadReviews = async () => {
-  if (!props.object?.id_object) {
-    console.warn('[loadReviews] No object ID')
-    return
-  }
+  if (!props.object?.id_object) return
 
   reviewsLoading.value = true
 
@@ -386,17 +388,13 @@ const loadReviews = async () => {
     const response = await api.get(
       `/reviews/object/${props.object.id_object}`,
       {
-        params: {
-          limit: 50,
-          offset: 0
-        }
+        params: { limit: 50, offset: 0 }
       }
     )
 
     const data = response.data
-
-    // Поддержка разных форматов ответа от бэкенда
     let reviewsData = []
+    
     if (Array.isArray(data)) {
       reviewsData = data
     } else if (data?.reviews && Array.isArray(data.reviews)) {
@@ -407,19 +405,42 @@ const loadReviews = async () => {
       reviewsData = data.data
     }
 
-    // Нормализация полей: гарантируем, что все нужные поля есть
-    reviews.value = reviewsData.map(review => ({
-      id: review.id_review || review.id || review.review_id,
-      user_name: review.user_name || review.nickname || review.author || 'Пользователь',
-      nickname: review.nickname || review.user_name || review.author,
-      rating: review.rating !== undefined ? review.rating : 0,
-      text: review.text || review.comment || review.content || '',
-      created_at: review.created_at || review.date || review.timestamp,
-      category_name: review.category_name || review.category,
-      photos: review.photos || review.images || [],
-      // Сохраняем остальные поля как есть
-      ...review
-    }))
+    // Словари для категорий
+    const categoryLabels = {
+      problem: 'Проблема',
+      suggestion: 'Предложение',
+      praise: 'Похвала'
+    }
+    const categoryValues = {
+      'Проблема': 'problem', 'проблема': 'problem',
+      'Предложение': 'suggestion', 'предложение': 'suggestion',
+      'Похвала': 'praise', 'похвала': 'praise'
+    }
+
+    reviews.value = reviewsData.map(review => {
+      let categoryValue = review.category || review.category_value
+      if (!categoryValue && review.category_name) {
+        categoryValue = categoryValues[review.category_name] || 
+                       categoryValues[review.category_name.toLowerCase()] || null
+      }
+      
+      let categoryName = categoryValue ? 
+        (categoryLabels[categoryValue] || review.category_name) : 
+        review.category_name
+
+      return {
+        id: review.id_review || review.id || review.review_id,
+        user_name: review.user_name || review.nickname || review.author || 'Пользователь',
+        nickname: review.nickname || review.user_name || review.author,
+        rating: review.rating !== undefined ? review.rating : 0,
+        text: review.text || review.comment || review.content || '',
+        created_at: review.created_at || review.date || review.timestamp,
+        category: categoryValue,
+        category_name: categoryName,
+        photos: review.photos || review.images || [],
+        ...review
+      }
+    })
 
   } catch (error) {
     console.error('[LoadReviews] Error:', error)
@@ -429,27 +450,25 @@ const loadReviews = async () => {
   }
 }
 
-// Обновление данных объекта после изменения отзывов
+// Обновление данных объекта
 const refreshObjectData = async () => {
   if (!props.object?.id_object) return
-
   try {
     const response = await api.get(`/api/objects/${props.object.id_object}`)
-    const updatedObject = response.data
-    emit('object-updated', updatedObject)
+    emit('object-updated', response.data)
   } catch (error) {
     console.error('[ObjectDetails] Error refreshing object:', error)
   }
 }
 
+// Отправка отзыва с обработкой модерации
 const submitReview = async () => {
   if (!props.object?.id_object) return
   submittingReview.value = true
   
   try {
     const token = localStorage.getItem('auth_token') || 
-                  sessionStorage.getItem('auth_token') ||
-                  ''
+                  sessionStorage.getItem('auth_token') || ''
     
     const formData = new FormData()
     formData.append('id_object', props.object.id_object)
@@ -464,14 +483,15 @@ const submitReview = async () => {
     }
     
     const response = await api.post('/reviews/', formData, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-        }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data'
+      }
     })
 
     const result = response.data
     
+    // Успешная отправка
     reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
     showReviewForm.value = false
     
@@ -483,15 +503,25 @@ const submitReview = async () => {
     toast.add({
       severity: 'success',
       summary: 'Успешно!',
-      detail: 'Отзыв отправлен',
+      detail: 'Отзыв опубликован',
       life: 3000,
       styleClass: 'my-big-toast'
     })
     
   } catch (error) {
-    console.error('[Review] Error:', error)
+    // Обработка ошибок модерации
+    const moderationError = error.response?.data?.detail
     
-    if (error.message?.includes('Not authenticated')) {
+    if (moderationError?.moderation_failed) {
+      // Отзыв отклонён модерацией
+      toast.add({
+        severity: 'warn',
+        summary: 'Отзыв не прошёл проверку',
+        detail: moderationError.reasons?.join(', ') || 'Содержит недопустимый контент',
+        life: 6000,
+        styleClass: 'my-error-toast'
+      })
+    } else if (error.message?.includes('Not authenticated')) {
       toast.add({
         severity: 'error',
         summary: 'Ошибка авторизации',
@@ -557,18 +587,15 @@ const formatExtraKey = (key) => {
 
 const openPhotoViewer = (url) => window.open(url, '_blank')
 
-// Надёжный триггер загрузки: при изменении visible И при наличии object
+// Триггер загрузки отзывов
 watch(
   () => [props.visible, props.object?.id_object],
   ([isVisible, objectId]) => {
-    if (isVisible && objectId) {
-      loadReviews()
-    }
+    if (isVisible && objectId) loadReviews()
   },
   { immediate: true }
 )
 
-// Дополнительная гарантия: если объект пришёл позже, чем открылась модалка
 watch(
   () => props.object?.id_object,
   (id) => {
@@ -701,6 +728,13 @@ watch(
 .extra-value {
   font-weight: 600;
   color: #0f172a;
+}
+
+.form-hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  display: block;
 }
 
 :deep(.p-button) { 
@@ -1110,29 +1144,34 @@ watch(
   gap: 2px !important;
 }
 
-/* === Цвета для категорий отзывов === */
-.category-problem {
+/* Цвета для категорий отзывов */
+:deep(.p-tag.category-problem) {
   background: linear-gradient(135deg, #fee2e2, #fecaca) !important;
   color: #b91c1c !important;
-  border-color: #f87171 !important;
+  border: 1px solid #f87171 !important;
   font-weight: 600 !important;
 }
 
-.category-suggestion {
+:deep(.p-tag.category-suggestion) {
   background: linear-gradient(135deg, #dbeafe, #bfdbfe) !important;
   color: #1e40af !important;
-  border-color: #60a5fa !important;
+  border: 1px solid #60a5fa !important;
   font-weight: 600 !important;
 }
 
-.category-praise {
+:deep(.p-tag.category-praise) {
   background: linear-gradient(135deg, #d1fae5, #a7f3d0) !important;
   color: #047857 !important;
-  border-color: #34d399 !important;
+  border: 1px solid #34d399 !important;
   font-weight: 600 !important;
 }
 
-/* === Плавное обновление счётчика === */
+:deep(.p-tag.p-tag-danger),
+:deep(.p-tag.p-tag-info),
+:deep(.p-tag.p-tag-success) {
+  background: transparent !important;
+}
+
 .section-header p {
   transition: all 0.2s ease;
   font-weight: 500;

@@ -4,9 +4,13 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import os
+import re
 
 from ..database import get_db_connection
 from ..utils.auth import get_current_user
+
+# 🔥 Импорт сервиса модерации
+from ..services.moderation import moderator
 
 router = APIRouter(prefix="/reviews", tags=["Reviews"])
 
@@ -40,15 +44,27 @@ async def create_review(
     photo: Optional[UploadFile] = File(None),
     current_user = Depends(get_current_user)
 ):
-    """Добавить новый отзыв с опциональным фото"""
+    """Добавить новый отзыв с опциональным фото и автоматической модерацией"""
     
-    # Валидация категории
+    # 🔥 1. Проверка текста через Detoxify (до любых других действий)
+    moderation_result = moderator.check_text(text)
+    
+    if not moderation_result['is_approved']:
+        # Отклоняем отзыв, если не прошёл модерацию
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "moderation_failed": True,
+                "reasons": moderation_result['reasons'],
+                "message": "Отзыв не прошёл автоматическую проверку"
+            }
+        )
+    
+    # 2. Валидация категории
     if category not in CATEGORY_MAP:
         raise HTTPException(status_code=400, detail="Неверная категория отзыва")
     
     id_category_review = CATEGORY_MAP[category]
-    
-    # 👇 ИСПРАВЛЕНО: обращаемся через точку (User объект, не словарь)
     id_user = current_user.id_user
     
     conn = None
@@ -78,7 +94,7 @@ async def create_review(
             
             photo_path = photo_path.replace("\\", "/")
         
-        # Создание отзыва
+        # Создание отзыва (только если модерация пройдена)
         cursor.execute("""
             INSERT INTO reviews 
             (id_object, id_user, text, rating, id_category_review, id_status, created_at)
@@ -90,7 +106,7 @@ async def create_review(
             text.strip(),
             rating,
             id_category_review,
-            2,
+            2,  # 2 = опубликован (модерация уже пройдена)
             datetime.now()
         ))
         
@@ -111,10 +127,12 @@ async def create_review(
         )
         
     except HTTPException:
-        if conn: conn.rollback()
+        if conn: 
+            conn.rollback()
         raise
     except Exception as e:
-        if conn: conn.rollback()
+        if conn: 
+            conn.rollback()
         print(f"[ReviewCreate] Ошибка: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера при создании отзыва")
     finally:
