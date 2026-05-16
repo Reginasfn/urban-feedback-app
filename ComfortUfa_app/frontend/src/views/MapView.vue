@@ -245,7 +245,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, toRef } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, toRef } from 'vue'
+import { useRouter } from 'vue-router'
 import AutoComplete from 'primevue/autocomplete'
 import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
@@ -264,6 +265,7 @@ import { createBalloonContent } from '@/utils/map/balloonRenderer'
 import api from '@/services/api' 
 import { isAuthenticated as checkAuth } from '@/utils/auth'
 
+const router = useRouter()
 const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_KEY || ''
 const { fetch: fetchRating, invalidate: invalidateRating, clear: clearRatingsCache } = useRatingsCache()
 
@@ -323,7 +325,7 @@ const objectTypeOptions = [
   { label: 'Детская площадка', value: 'Детская площадка' }
 ]
 
-// 🔥 ПЕРЕМЕННЫЕ ДЛЯ МОДАЛКИ (добавлено!)
+// 🔥 ПЕРЕМЕННЫЕ ДЛЯ МОДАЛКИ
 const modalVisible = ref(false)
 const modalObject = ref(null)
 
@@ -614,7 +616,6 @@ const openObjectDetails = async (objectId) => {
   } catch (err) {
     console.error('[Modal] Error loading object:', err)
     setError('Не удалось загрузить данные объекта')
-    // modalVisible.value = false
   }
 }
 
@@ -628,7 +629,6 @@ const onModalClose = async () => {
 
   const objectId = updatedData.id_object
 
-  // Поиск метки в кластере или activePlacemark
   let targetPlacemark = null
   let isInCluster = false
   
@@ -647,16 +647,13 @@ const onModalClose = async () => {
 
   if (!targetPlacemark) return
 
-  // Запоминаем состояние балуна
   const wasOpen = targetPlacemark.balloon?.isOpen()
   
   try {
-    // Инвалидируем кэш рейтинга для получения свежих данных
     if (typeof invalidateRating === 'function') {
       invalidateRating(objectId)
     }
 
-    // Загружаем свежий рейтинг с фолбэком на данные из модалки
     let apiRating = { avg: null, count: 0 }
     try {
       apiRating = await fetchRating(objectId)
@@ -664,18 +661,15 @@ const onModalClose = async () => {
       console.warn('[ModalClose] API fetch failed, using modal fallback')
     }
 
-    // Приоритет: данные из API, если есть; иначе — данные из модалки
     const finalAvg = apiRating?.avg ?? updatedData.rating_avg
     const finalCount = apiRating?.count ?? updatedData.rating_count
 
-    // Сохраняем исходные данные метки
     const coords = targetPlacemark.geometry.getCoordinates()
     const hint = targetPlacemark.properties.get('hintContent')
     const objectType = targetPlacemark.options.get('objectType') || updatedData.type_name
     const objectIndex = targetPlacemark.__objectIndex || 0
     const isBookmarked = bookmarkedObjects.value.has(objectId)
 
-    // Формируем обновлённые данные
     const updatedObjectData = {
       ...targetPlacemark.__objectData,
       rating: finalAvg,
@@ -684,7 +678,6 @@ const onModalClose = async () => {
       rating_count: finalCount
     }
 
-    // Генерируем новый контент балуна
     const newContent = createBalloonContent(
       updatedObjectData,
       objectIndex,
@@ -695,16 +688,13 @@ const onModalClose = async () => {
       }
     )
 
-    // Удаляем старую метку
     if (isInCluster) {
       clusterer.remove(targetPlacemark)
     } else if (map.geoObjects) {
       map.geoObjects.remove(targetPlacemark)
     }
 
-    // Небольшая задержка для стабилизации состояния карты
     setTimeout(() => {
-      // Создаём новую метку с обновлёнными данными
       const newPlacemark = new window.ymaps.Placemark(
         coords,
         {
@@ -720,23 +710,19 @@ const onModalClose = async () => {
         }
       )
 
-      // Сохраняем ссылки на данные в новой метке
       newPlacemark.__objectData = updatedObjectData
       newPlacemark.__objectIndex = objectIndex
 
-      // Добавляем метку на карту
       if (isInCluster) {
         clusterer.add(newPlacemark)
       } else if (map.geoObjects) {
         map.geoObjects.add(newPlacemark)
       }
 
-      // Обновляем ссылку на активную метку
       if (activePlacemark === targetPlacemark) {
         activePlacemark = newPlacemark
       }
 
-      // Открываем балун на новой метке, если он был открыт
       if (wasOpen) {
         setTimeout(() => {
           try {
@@ -767,7 +753,6 @@ const onGoToMap = (object) => {
   }
 }
 
-// 🔥 ИСПРАВЛЕННЫЙ __toggleBookmark
 window.__toggleBookmark = async (objectId, btnElement) => {
   const numericId = Number(objectId)
   
@@ -909,20 +894,17 @@ const handleObjectUpdated = (updatedObject) => {
     rating_avg: updatedObject?.rating_avg 
   })
   
-  // Просто сохраняем данные в модалку
   modalObject.value = updatedObject
   
   if (!map || !clusterer || !updatedObject?.id_object) return
 
   const objectId = updatedObject.id_object
   
-  // 🚫 НЕ ЗАКРЫВАЕМ/НЕ ОТКРЫВАЕМ БАЛУН ЗДЕСЬ! Это вызывает crash Yandex API
   const updatePlacemarkData = (placemark) => {
     const pid = placemark.options?.get('objectId')
     if (Number(pid) !== objectId) return
 
     console.log('[handleObjectUpdated] Updating internal data for:', objectId)
-    // Обновляем только внутренние данные, визуал обновится в onModalClose
     placemark.__objectData = {
       ...placemark.__objectData,
       rating: updatedObject.rating_avg,
@@ -963,7 +945,10 @@ onMounted(async () => {
   try {
     await initMap()
     await loadUserFavorites()
-    if (categories.length > 0) await loadObjects(categories[0])
+
+    selectedCategory.value = 'all'
+    await loadObjects('all')
+    
   } catch (err) { 
     setError(`Ошибка инициализации: ${err.message}`) 
   }
@@ -979,7 +964,6 @@ onBeforeUnmount(() => {
   if (map) { map.destroy(); map = null; clusterer = null }
   clearRatingsCache(); cleanupAddMode()
   
-  // 🔥 ОЧИСТКА ГЛОБАЛЬНЫХ КОЛБЭКОВ (добавлено!)
   if (window.__openObjectDetails) delete window.__openObjectDetails
   if (window.__toggleBookmark) delete window.__toggleBookmark
   if (window.__openReview) delete window.__openReview
@@ -1010,6 +994,116 @@ const {
 })
 
 loadObjectsRef.value = loadObjects
+
+// ==========================================
+// 🔥 НАВИГАЦИЯ ИЗ ИЗБРАННОГО (ИСПРАВЛЕНО) 🔥
+// ==========================================
+
+// 1. Сначала объявляем флаг
+let navigationHandled = false
+
+// 2. Затем объявляем функции, которые используются в watch
+
+// Функция попытки навигации
+const tryNavigateFromQuery = (query) => {
+  // Проверка готовности карты
+  if (!isMapInitialized.value || !map) {
+    console.log('[MapView] Map not ready yet, skipping navigation')
+    return
+  }
+  
+  // Проверка флага, чтобы не запустить дважды
+  if (navigationHandled) {
+    console.log('[MapView] Navigation already handled, skipping')
+    return
+  }
+  
+  const objectId = query.id
+  const focus = query.focus
+  const zoom = query.zoom ? parseInt(query.zoom) : 16
+  
+  console.log('[MapView] Attempting navigation to object:', objectId)
+  navigationHandled = true // Ставим флаг
+  
+  // Если есть полные данные в query — используем их
+  if (query.name && query.type) {
+    const obj = {
+      id_object: Number(objectId),
+      name: query.name,
+      type_name: query.type,
+      address: query.address || '',
+      coords: focus ? focus.split(',').map(Number) : null,
+      rating_avg: query.rating_avg ? parseFloat(query.rating_avg) : null,
+      rating_count: query.rating_count ? parseInt(query.rating_count) : 0
+    }
+    
+    if (obj.coords) {
+      navigateToObject(obj)
+    }
+  } else {
+    // Если только ID — загружаем полные данные с бэкенда
+    loadObjectByIdAndNavigate(Number(objectId), focus ? focus.split(',').map(Number) : null, zoom)
+  }
+  
+  // Очищаем query params после навигации
+  setTimeout(() => {
+    router.replace({ query: {} })
+    // Сбрасываем флаг через 2 секунды
+    setTimeout(() => { navigationHandled = false }, 2000)
+  }, 100)
+}
+
+// Вспомогательная функция: загрузка объекта по ID и навигация
+const loadObjectByIdAndNavigate = async (objectId, coords, zoom = 16) => {
+  try {
+    console.log('[MapView] Loading object by ID:', objectId)
+    const response = await api.get(`/api/objects/${objectId}`)
+    const obj = response.data
+    
+    if (obj?.coords) {
+      await navigateToObject({
+        ...obj,
+        rating_avg: obj.rating_avg,
+        rating_count: obj.rating_count
+      })
+    }
+  } catch (err) {
+    console.error('[MapView] Error loading object for navigation:', err)
+    setError('Не удалось загрузить объект для навигации')
+    
+    // Фолбэк: просто центрируем карту на координатах
+    if (coords && map) {
+      await map.setCenter(coords, zoom, { duration: 500 })
+      setSuccess('Объект не найден, но карта перемещена')
+    }
+  }
+}
+
+// 3. И только в самом конце объявляем watch, которые вызывают эти функции
+
+// Watch за query params
+watch(
+  () => router.currentRoute.value.query,
+  (query) => {
+    const objectId = query.id
+    if (objectId && !navigationHandled) {
+      console.log('[MapView] Query param detected, waiting for map init...')
+      tryNavigateFromQuery(query)
+    }
+  },
+  { immediate: true }
+)
+
+// Watch за инициализацией карты
+watch(
+  () => isMapInitialized.value,
+  (initialized) => {
+    if (initialized && !navigationHandled && router.currentRoute.value.query.id) {
+      console.log('[MapView] Map initialized, retrying navigation...')
+      tryNavigateFromQuery(router.currentRoute.value.query)
+    }
+  }
+)
 </script>
 
 <style scoped>

@@ -1,4 +1,4 @@
-# objects.py
+# backend/api/endpoints/objects.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -50,7 +50,6 @@ async def get_optional_current_user(
             return None
 
         # 5. Получаем пользователя из БД
-        # ВАЖНО: В твоей таблице users НЕТ поля is_active
         query = text("""
             SELECT
                 id_user,
@@ -90,13 +89,12 @@ async def get_optional_current_user(
         return None
     except Exception as e:
         print(f"[get_optional_current_user] Not authenticated: {e}")
-        db.rollback()  # ОБЯЗАТЕЛЬНО сбрасываем failed transaction
+        db.rollback()
         return None
 
 def check_duplicate_object(db: Session, name: str, coords: list, type_name: str, radius_meters: float = 15):
     """
     Проверяет наличие дублирующего объекта того же типа в указанном радиусе.
-    Сравнивает названия (точное совпадение или частичное).
     """
     lat, lon = coords
     
@@ -180,7 +178,7 @@ async def get_objects(
         where_conditions = ["o.id_status = 2"]
         params = {"limit": limit}
         
-        # 1. BBOX фильтрация (видимая область карты)
+        # 1. BBOX фильтрация
         if bbox:
             try:
                 min_lon, min_lat, max_lon, max_lat = map(float, bbox.split(','))
@@ -199,7 +197,7 @@ async def get_objects(
             except ValueError as e:
                 print(f"Ошибка парсинга bbox: {e}")
         
-        # 2. Рядом со мной (геолокация)
+        # 2. Рядом со мной
         if near_lat is not None and near_lon is not None:
             where_conditions.append("""
                 ST_DWithin(
@@ -214,14 +212,14 @@ async def get_objects(
                 "near_radius": near_radius
             })
         
-        # 3. Избранное (фильтрация по списку ID)
+        # 3. Избранное
         if bookmarked_ids:
             ids = [int(x.strip()) for x in bookmarked_ids.split(',') if x.strip().isdigit()]
             if ids:
                 where_conditions.append("o.id_object = ANY(:bookmarked_ids)")
                 params["bookmarked_ids"] = ids
         
-        # 4. Мои объекты (требует авторизации)
+        # 4. Мои объекты
         if mine:
             if not current_user:
                 raise HTTPException(
@@ -231,7 +229,7 @@ async def get_objects(
             where_conditions.append("o.created_by = :user_id")
             params["user_id"] = current_user.id_user
         
-        # 5. Проблемные объекты (жалобы + низкий рейтинг)
+        # 5. Проблемные объекты
         if min_problems is not None:
             where_conditions.append("""
                 (SELECT COUNT(*) FROM reviews r 
@@ -291,22 +289,46 @@ async def get_objects(
         user_favorite_ids = set()
         if current_user:
             try:
-                print(f"[get_objects] User {current_user.id_user} authenticated, loading favorites...")
                 fav_query = text("""
                     SELECT id_object FROM favorites 
                     WHERE id_user = :user_id
                 """)
                 fav_result = db.execute(fav_query, {"user_id": current_user.id_user})
                 user_favorite_ids = {row.id_object for row in fav_result.fetchall()}
-                print(f"[get_objects] User has {len(user_favorite_ids)} favorites: {user_favorite_ids}")
             except Exception as e:
                 print(f"[get_objects] Error loading favorites: {e}")
                 user_favorite_ids = set()
 
-        # Формируем ответ
+        # 🔥 НОВОЕ: Получаем рейтинги для всех объектов ОДНИМ запросом
+        object_ids = [row.id_object for row in rows]
+        ratings_map = {}
+        
+        if object_ids:
+            ratings_query = text("""
+                SELECT 
+                    r.id_object,
+                    AVG(r.rating) as avg_rating,
+                    COUNT(*) as count_rating
+                FROM reviews r
+                WHERE r.id_object = ANY(:object_ids)
+                  AND r.id_status = 2
+                GROUP BY r.id_object
+            """)
+            ratings_result = db.execute(ratings_query, {"object_ids": object_ids})
+            ratings_map = {
+                row.id_object: {
+                    "avg": float(row.avg_rating) if row.avg_rating else None, 
+                    "count": row.count_rating
+                }
+                for row in ratings_result
+            }
+
+        # Формируем ответ с реальными рейтингами
         response_data = []
         for row in rows:
             is_bookmarked = row.id_object in user_favorite_ids
+            rating_data = ratings_map.get(row.id_object, {"avg": None, "count": 0})
+            
             response_data.append({
                 "id_object": row.id_object, 
                 "name": row.name,
@@ -316,8 +338,8 @@ async def get_objects(
                 "id_status": row.id_status,
                 "created_at": row.created_at,
                 "is_bookmarked": is_bookmarked,
-                "rating_avg": None,
-                "rating_count": 0
+                "rating_avg": rating_data["avg"],    # ✅ Реальный рейтинг
+                "rating_count": rating_data["count"] # ✅ Реальное количество
             })
         
         return response_data

@@ -3,14 +3,6 @@
   <div class="favorites-page">
     <!-- ===== ХЕДЕР ===== -->
     <div class="favorites-header">
-      <Button 
-        class="back-btn" 
-        @click="$router.back()" 
-        title="Назад"
-        icon="pi pi-arrow-left"
-        text
-        rounded
-      />
       <h1 class="page-title">Избранные места</h1>
       <div class="header-actions">
         <Button 
@@ -88,7 +80,7 @@
             <!-- Правая часть: 3 кнопки -->
             <div class="card-actions">
               <Button 
-                class="btn-action btn-map" 
+                class="btn-action btn-map" style="background-color: green;"
                 @click="showOnMap(obj)"
                 icon="pi pi-map"
                 label="На карте"
@@ -96,7 +88,7 @@
                 size="small"
               />
               <Button 
-                class="btn-action btn-details" 
+                class="btn-action btn-details" style="border-width: 2px; border-color: mediumseagreen;"
                 @click="openDetailsModal(obj)"
                 icon="pi pi-info-circle"
                 label="Подробнее"
@@ -279,12 +271,19 @@ const clearAllFavorites = async () => {
 
 // ===== ПОКАЗАТЬ НА КАРТЕ =====
 const showOnMap = (obj) => {
+  console.log('[Favorites] Navigating to object:', obj.id_object, obj.coords)
+  
   router.push({
     path: '/map',
     query: { 
       focus: `${obj.coords[0]},${obj.coords[1]}`,
       zoom: 16,
-      id: obj.id_object
+      id: obj.id_object,
+      type: obj.type_name,
+      name: obj.name,
+      address: obj.address,
+      rating_avg: obj.rating_avg,
+      rating_count: obj.rating_count
     }
   })
 }
@@ -325,8 +324,8 @@ onMounted(() => {
 /* ===== БАЗОВЫЕ СТИЛИ ===== */
 .favorites-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8fafc 0%, #ecfdf5 100%);
-  padding: 24px;
+  background: transparent;
+  padding: 0px 120px 0px 140px;
   font-family: var(--font-family, Inter, system-ui, -apple-system, sans-serif);
   color: var(--text-color, #1a1a1a);
 }
@@ -337,7 +336,7 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   margin-bottom: 24px;
-  padding: 16px 20px;
+  padding: 20px 30px;
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
   border-radius: 16px;
@@ -347,10 +346,9 @@ onMounted(() => {
 
 .page-title {
   flex: 1;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--p-primary-color, #168f04);
-  margin: 0;
+  font-size: 23px;
+  font-weight: 800;
+  color: rgb(30, 101, 21);
 }
 
 /* ===== ЗАГРУЗКА / ПУСТО ===== */
@@ -511,7 +509,8 @@ onMounted(() => {
 }
 
 .btn-action {
-  min-width: 110px;
+  min-width: 150px;
+  min-height: 50px;
 }
 
 /* ===== КНОПКА ЗАКЛАДКИ (как в примере) ===== */
