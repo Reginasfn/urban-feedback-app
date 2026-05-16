@@ -31,7 +31,7 @@
         <label class="sidebar-label">Объекты</label>
         <div class="categories-list">
           <button 
-            @click="loadObjects('all')"
+            @click="selectCategory('all')"
             :class="{ active: selectedCategory === 'all' }"
             class="category-btn all-btn"
           >
@@ -42,7 +42,7 @@
           <button 
             v-for="cat in categories" 
             :key="cat" 
-            @click="loadObjects(cat)"
+            @click="selectCategory(cat)"
             :class="{ active: selectedCategory === cat }"
             class="category-btn"
           >
@@ -986,14 +986,20 @@ const {
   setError,
   setSuccess,
   fetchRating,
-  activePlacemarkRef: toRef(() => activePlacemark),
+  activePlacemarkRef: activePlacemark,
   activeFilterRef: activeFilter,
   userCoordsRef: userCoords,
-  selectedCategoryRef: selectedCategory,
   isAuthenticatedRef: isAuthenticated
 })
 
 loadObjectsRef.value = loadObjects
+
+// ===== ВЫБОР КАТЕГОРИИ (обновляет UI + загружает объекты) =====
+// 🔥 ЭТА ФУНКЦИЯ ОБНОВЛЯЕТ selectedCategory.value ПЕРЕД ЗАГРУЗКОЙ
+const selectCategory = (cat) => {
+  selectedCategory.value = cat  // Обновляем реактивную переменную для UI
+  loadObjects(cat)              // Загружаем объекты
+}
 
 // ==========================================
 // 🔥 НАВИГАЦИЯ ИЗ ИЗБРАННОГО (ИСПРАВЛЕНО) 🔥

@@ -16,7 +16,7 @@ export function useObjectLoad({
   activePlacemarkRef,
   activeFilterRef,
   userCoordsRef,
-  selectedCategoryRef,
+  // ❌ УБРАНО: selectedCategoryRef - не используется
   isAuthenticatedRef,
   NEARBY_RADIUS = 1000
 }) {
@@ -29,14 +29,13 @@ export function useObjectLoad({
       return
     }
 
-    if (activePlacemarkRef.value && map.value.geoObjects) {
-      map.value.geoObjects.remove(activePlacemarkRef.value)
-      activePlacemarkRef.value = null
+    if (activePlacemarkRef && map.value.geoObjects) {
+      map.value.geoObjects.remove(activePlacemarkRef)
+      activePlacemarkRef = null
     }
 
     clusterer.value.removeAll()
     loading.value = true
-    selectedCategoryRef.value = type
     objectsCount.value = 0
 
     try {
@@ -126,8 +125,6 @@ export function useObjectLoad({
         }
 
         placemark.__objectIndex = index
-
-        // ❌ убрали блокировку загрузки рейтинга
         placemark.__ratingLoaded = false
 
         placemark.events.add('balloonopen', async () => {
