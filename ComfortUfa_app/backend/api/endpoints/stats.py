@@ -1,67 +1,200 @@
+# backend/api/endpoints/stats.py
 """
-Эндпоинты для получения статистики платформы
+Эндпоинты для получения расширенной статистики платформы
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Optional
+from sqlalchemy import text, func, desc
+from typing import Optional, List
+from datetime import datetime, timedelta
 
 from api.database import get_db
-from api.schemas import PlatformStats  # Импортируем схему из ШАГА 1
+from api.schemas import PlatformStats
 
-# Создаём роутер
 router = APIRouter(prefix="/api", tags=["Statistics"])
 
 @router.get("/stats", response_model=PlatformStats)
 async def get_platform_stats(db: Session = Depends(get_db)):
-    """
-    Получение общей статистики платформы для главной страницы
-    """
+    """Общая статистика платформы"""
     try:
-        # 📊 Запрос 1: Общее количество объектов
-        objects_query = text("SELECT COUNT(*) as count FROM public.objects")
-        objects_result = db.execute(objects_query).first()
-        total_objects = objects_result.count if objects_result else 0
+        # Всего объектов
+        objects_query = text("SELECT COUNT(*) as count FROM public.objects WHERE id_status = 2")
+        result = db.execute(objects_query).first()
+        total_objects = result.count if result else 0
         
-        # 📊 Запрос 2: Количество проблем (отзывы с category='problem')
+        # Проблемы (отзывы с категорией 'Проблема')
         problems_query = text("""
-            SELECT COUNT(*) as count 
-            FROM public.reviews r
-            INNER JOIN public.review_categories rc 
-                ON r.id_category_review = rc.id_category_review
-            WHERE rc.name = 'Проблема'
+            SELECT COUNT(*) as count FROM public.reviews r
+            INNER JOIN public.review_categories rc ON r.id_category_review = rc.id_category_review
+            WHERE rc.name = 'Проблема' AND r.id_status = 2
         """)
-        try:
-            problems_result = db.execute(problems_query).first()
-            total_problems = problems_result.count if problems_result else 0
-            print(f"✅ Найдено проблем: {total_problems}")
-        except:
-            print(f"⚠️ Ошибка подсчёта проблем: {e}")
-            total_problems = 0  # Таблицы ещё нет
+        result = db.execute(problems_query).first()
+        total_problems = result.count if result else 0
         
-        # 📊 Запрос 3: Количество пользователей
+        # Пользователи
         users_query = text("""
-            SELECT COUNT(*) as count 
-            FROM public.users r 
-            INNER JOIN public.roles rc 
-                ON r.id_role = rc.id_role
-            WHERE rc.name_role = 'Пользователь'
+            SELECT COUNT(*) as count FROM public.users u
+            INNER JOIN public.roles r ON u.id_role = r.id_role
+            WHERE r.name_role = 'Пользователь'
         """)
-        try:
-            users_result = db.execute(users_query).first()
-            total_users = users_result.count if users_result else 0
-            print(f"✅ Найдено пользователей: {total_users}")
-        except Exception as e:
-            print(f"⚠️ Ошибка подсчёта пользователей: {e}")
-            total_users = 0
+        result = db.execute(users_query).first()
+        total_users = result.count if result else 0
         
-        # ✅ Возвращаем статистику
         return PlatformStats(
             total_objects=total_objects,
             total_problems=total_problems,
             total_users=total_users
         )
-        
     except Exception as e:
-        print(f"❌ Ошибка статистики: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/objects-by-type")
+async def get_objects_by_type(db: Session = Depends(get_db)):
+    """Распределение объектов по типам"""
+    try:
+        query = text("""
+            SELECT t.name_type as type_name, COUNT(o.id_object) as count
+            FROM public.type_object t
+            LEFT JOIN public.objects o ON t.id_type = o.id_type AND o.id_status = 2
+            GROUP BY t.id_type, t.name_type
+            ORDER BY count DESC
+        """)
+        result = db.execute(query).all()
+        return [{"label": row.type_name or "Не указан", "value": row.count} for row in result]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/top-reviewed-objects")
+async def get_top_reviewed_objects(limit: int = Query(10, ge=1, le=50), db: Session = Depends(get_db)):
+    """Топ объектов по количеству отзывов"""
+    try:
+        query = text("""
+            SELECT o.id_object, o.name, t.name_type as type_name, 
+                   COUNT(r.id_review) as review_count, AVG(r.rating) as avg_rating
+            FROM public.objects o
+            LEFT JOIN public.type_object t ON o.id_type = t.id_type
+            LEFT JOIN public.reviews r ON o.id_object = r.id_object AND r.id_status = 2
+            WHERE o.id_status = 2
+            GROUP BY o.id_object, o.name, t.name_type
+            HAVING COUNT(r.id_review) > 0
+            ORDER BY review_count DESC
+            LIMIT :limit
+        """)
+        result = db.execute(query, {"limit": limit}).all()
+        return [{
+            "id": row.id_object,
+            "name": row.name,
+            "type": row.type_name,
+            "reviews": row.review_count,
+            "rating": float(row.avg_rating) if row.avg_rating else None
+        } for row in result]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/top-favorited-objects")
+async def get_top_favorited_objects(limit: int = Query(10, ge=1, le=50), db: Session = Depends(get_db)):
+    """Топ объектов в избранном"""
+    try:
+        query = text("""
+            SELECT o.id_object, o.name, t.name_type as type_name, 
+                   COUNT(f.id_favorite) as favorite_count
+            FROM public.objects o
+            INNER JOIN public.type_object t ON o.id_type = t.id_type
+            INNER JOIN public.favorites f ON o.id_object = f.id_object
+            WHERE o.id_status = 2
+            GROUP BY o.id_object, o.name, t.name_type
+            ORDER BY favorite_count DESC
+            LIMIT :limit
+        """)
+        result = db.execute(query, {"limit": limit}).all()
+        return [{
+            "id": row.id_object,
+            "name": row.name,
+            "type": row.type_name,
+            "favorites": row.favorite_count
+        } for row in result]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/favorite-types")
+async def get_favorite_types(db: Session = Depends(get_db)):
+    """Какие типы объектов чаще всего в избранном"""
+    try:
+        query = text("""
+            SELECT t.name_type as type_name, COUNT(f.id_favorite) as favorite_count
+            FROM public.type_object t
+            INNER JOIN public.objects o ON t.id_type = o.id_type
+            INNER JOIN public.favorites f ON o.id_object = f.id_object
+            WHERE o.id_status = 2
+            GROUP BY t.id_type, t.name_type
+            ORDER BY favorite_count DESC
+        """)
+        result = db.execute(query).all()
+        return [{"label": row.type_name, "value": row.favorite_count} for row in result]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/reviews-by-category")
+async def get_reviews_by_category(db: Session = Depends(get_db)):
+    """Распределение отзывов по категориям"""
+    try:
+        query = text("""
+            SELECT rc.name as category_name, COUNT(r.id_review) as count
+            FROM public.review_categories rc
+            LEFT JOIN public.reviews r ON rc.id_category_review = r.id_category_review AND r.id_status = 2
+            GROUP BY rc.id_category_review, rc.name
+            ORDER BY count DESC
+        """)
+        result = db.execute(query).all()
+        return [{"label": row.category_name or "Без категории", "value": row.count} for row in result]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/rating-distribution")
+async def get_rating_distribution(db: Session = Depends(get_db)):
+    """Распределение оценок (1-5 звёзд)"""
+    try:
+        query = text("""
+            SELECT rating, COUNT(*) as count
+            FROM public.reviews
+            WHERE id_status = 2 AND rating IS NOT NULL
+            GROUP BY rating
+            ORDER BY rating ASC
+        """)
+        result = db.execute(query).all()
+        # Заполняем пропущенные оценки нулями
+        distribution = {str(i): 0 for i in range(1, 6)}
+        for row in result:
+            distribution[str(row.rating)] = row.count
+        return [{"rating": k, "count": v} for k, v in distribution.items()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/activity-timeline")
+async def get_activity_timeline(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
+    """Активность по дням (новые объекты + отзывы)"""
+    try:
+        start_date = datetime.now() - timedelta(days=days)
+        query = text("""
+            SELECT DATE(created_at) as date, 
+                   COUNT(CASE WHEN table_name = 'objects' THEN 1 END) as new_objects,
+                   COUNT(CASE WHEN table_name = 'reviews' THEN 1 END) as new_reviews
+            FROM (
+                SELECT created_at, 'objects' as table_name FROM public.objects WHERE id_status = 2 AND created_at >= :start_date
+                UNION ALL
+                SELECT created_at, 'reviews' as table_name FROM public.reviews WHERE id_status = 2 AND created_at >= :start_date
+            ) as combined
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        """)
+        result = db.execute(query, {"start_date": start_date}).all()
+        return [{"date": row.date.isoformat(), "objects": row.new_objects, "reviews": row.new_reviews} for row in result]
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

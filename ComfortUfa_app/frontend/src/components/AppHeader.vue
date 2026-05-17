@@ -16,7 +16,8 @@ export default {
         return {
             navItems: [
                 { label: 'КАРТА', path: '/map' },
-                { label: 'О ПРОЕКТЕ', path: '/about' }
+                { label: 'О ПРОЕКТЕ', path: '/about' },
+                { label: 'СТАТИСТИКА', path: '/statistics' }
             ],
             isAuth: false,
             showLoginModal: false,

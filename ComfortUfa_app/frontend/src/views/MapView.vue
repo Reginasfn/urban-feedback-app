@@ -210,16 +210,6 @@
     </Transition>
 
     <!-- Модальные окна -->
-    <ReviewModal
-      v-model:visible="showReviewModal"
-      :selected-object="selectedObjectForReview"
-      :review-categories="reviewCategories"
-      :category-icons="categoryIcons"
-      @submit="handleReviewSubmit"
-      @cancel="handleReviewCancel"
-      @error="handleReviewError"
-    />
-
     <ObjectModal
       v-model:visible="showObjectModal"
       :coordinates="pendingObjectCoords"
@@ -248,7 +238,6 @@
 import { ref, watch, onMounted, onBeforeUnmount, toRef } from 'vue'
 import { useRouter } from 'vue-router'
 import AutoComplete from 'primevue/autocomplete'
-import ReviewModal from '@/components/modals/ReviewModal.vue'
 import ObjectModal from '@/components/modals/ObjectModal.vue'
 import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
 
@@ -305,16 +294,9 @@ const {
 })
 
 const bookmarkedObjects = ref(new Set())
-const showReviewModal = ref(false)
-const selectedObjectForReview = ref(null)
-
-const reviewCategories = [
-  { value: 'praise', label: 'Похвала', icon: 'pi pi-thumbs-up' },
-  { value: 'suggestion', label: 'Предложение', icon: 'pi pi-lightbulb' },
-  { value: 'problem', label: 'Проблема', icon: 'pi pi-exclamation-circle' }
-]
 
 const objectTypeOptions = [
+  // 🔹 Оригинальные 8 типов
   { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
   { label: 'Кафе', value: 'Кафе' },
   { label: 'Фонарь', value: 'Фонарь' },
@@ -322,7 +304,18 @@ const objectTypeOptions = [
   { label: 'Парк', value: 'Парк' },
   { label: 'Беседка', value: 'Беседка' },
   { label: 'Остановка', value: 'Остановка' },
-  { label: 'Детская площадка', value: 'Детская площадка' }
+  { label: 'Детская площадка', value: 'Детская площадка' },
+  
+  { label: 'Спортивная площадка', value: 'Спортивная площадка' },
+  { label: 'Урна', value: 'Урна' },
+  { label: 'Мусорный контейнер', value: 'Мусорный контейнер' },
+  { label: 'Парковка', value: 'Парковка' },
+  { label: 'Пешеходный переход', value: 'Пешеходный переход' },
+  { label: 'Памятник', value: 'Памятник' },
+  { label: 'Информационный стенд', value: 'Информационный стенд' },
+  { label: 'Цветник', value: 'Цветник' },
+  { label: 'Дорожка', value: 'Дорожка' },
+  { label: 'Ограждение', value: 'Ограждение' }
 ]
 
 // 🔥 ПЕРЕМЕННЫЕ ДЛЯ МОДАЛКИ
@@ -341,8 +334,32 @@ let suppressBoundsReload = false
 const UFA_CENTER = [54.7388, 55.9721]
 const DEFAULT_ZOOM = 12
 
-const categories = ['Камера видеонаблюдения', 'Кафе', 'Фонарь', 'Скамейка', 'Парк', 'Беседка', 'Остановка', 'Детская площадка']
+const categories = [
+  // 🔹 Оригинальные 8 типов (порядок сохранён)
+  'Камера видеонаблюдения', 
+  'Кафе', 
+  'Фонарь', 
+  'Скамейка', 
+  'Парк', 
+  'Беседка', 
+  'Остановка', 
+  'Детская площадка',
+  
+  // 🔹 Новые типы для благоустройства (только с маркерами)
+  'Спортивная площадка',
+  'Урна',
+  'Мусорный контейнер',
+  'Парковка',
+  'Пешеходный переход',
+  'Памятник',
+  'Информационный стенд',
+  'Цветник',
+  'Дорожка',
+  'Ограждение'
+]
+
 const markerConfig = {
+  // 🔹 Оригинальные 8 типов (твои пресеты сохранены)
   "Кафе": { preset: 'islands#redFoodCircleIcon' },
   "Скамейка": { preset: 'islands#brownCircleIcon' },
   "Фонарь": { preset: 'islands#yellowInfoCircleIcon' },
@@ -350,13 +367,45 @@ const markerConfig = {
   "Беседка": { preset: 'islands#brownLeisureCircleIcon' },
   "Остановка": { preset: 'islands#blueMassTransitCircleIcon' },
   "Детская площадка": { preset: 'islands#orangeFamilyCircleIcon' },
-  "Камера видеонаблюдения": { preset: 'islands#blackVideoCircleIcon' }
+  "Камера видеонаблюдения": { preset: 'islands#blackVideoCircleIcon' },
+
+  // 🔹 Новые типы (рабочие *CircleIcon пресеты)
+  "Спортивная площадка": { preset: 'islands#greenCircleIcon' },
+  "Урна": { preset: 'islands#grayCircleIcon' },
+  "Мусорный контейнер": { preset: 'islands#grayCircleIcon' },
+  "Парковка": { preset: 'islands#grayCircleIcon' },
+  "Пешеходный переход": { preset: 'islands#grayCircleIcon' },
+  "Памятник": { preset: 'islands#violetCircleIcon' },
+  "Информационный стенд": { preset: 'islands#blueCircleIcon' },
+  "Цветник": { preset: 'islands#pinkCircleIcon' },
+  "Дорожка": { preset: 'islands#grayCircleIcon' },
+  "Ограждение": { preset: 'islands#grayCircleIcon' }
 }
+
 const categoryIcons = {
-  'Камера видеонаблюдения': 'pi pi-video', 'Кафе': 'pi pi-map-marker', 'Фонарь': 'pi pi-lightbulb',
-  'Скамейка': 'pi pi-map-marker', 'Парк': 'pi pi-map-marker', 'Беседка': 'pi pi-building-columns',
-  'Остановка': 'pi pi-car', 'Детская площадка': 'pi pi-face-smile'
+  // 🔹 Оригинальные 8 типов (твои иконки сохранены)
+  'Камера видеонаблюдения': 'pi pi-video', 
+  'Кафе': 'pi pi-map-marker', 
+  'Фонарь': 'pi pi-lightbulb',
+  'Скамейка': 'pi pi-map-marker', 
+  'Парк': 'pi pi-map-marker', 
+  'Беседка': 'pi pi-building-columns',
+  'Остановка': 'pi pi-car', 
+  'Детская площадка': 'pi pi-face-smile',
+
+  // 🔹 Новые типы (только те, что есть в markerConfig)
+  'Спортивная площадка': 'pi pi-bolt',
+  'Урна': 'pi pi-trash',
+  'Мусорный контейнер': 'pi pi-trash',
+  'Парковка': 'pi pi-car',
+  'Пешеходный переход': 'pi pi-directions-alt',
+  'Памятник': 'pi pi-flag',
+  'Информационный стенд': 'pi pi-info-circle',
+  'Цветник': 'pi pi-star',
+  'Дорожка': 'pi pi-arrow-right',
+  'Ограждение': 'pi pi-th-large'
 }
+
 const getCategoryIcon = (cat) => categoryIcons[cat] || 'pi pi-map-marker'
 
 const { currentLayer: activeLayer, isSwitching: layerSwitching, layers: availableLayers, switchLayer: changeLayer, isLayerActive } = useMapLayers({ onSuccess: (msg) => setSuccess(msg, 1500), onError: (msg) => setError(msg, 3000) })
@@ -574,7 +623,7 @@ const createMapInstance = () => new Promise((resolve, reject) => {
       })
 
       clusterer = new window.ymaps.Clusterer({
-        preset: 'islands#invertedDarkGreenClusterIcons',
+        preset: 'islands#invertedDarkBlueClusterIcons',
         clusterDisableClickZoom: false,
         clusterOpenBalloonOnClick: true,
         clusterHasBalloon: true,
@@ -831,31 +880,6 @@ window.__toggleBookmark = async (objectId, btnElement) => {
   }
 }
 
-window.__openReview = (objectId, objectName, objectType) => {
-  if (!isAuthenticated.value) { setError('Необходимо авторизоваться'); return }
-  selectedObjectForReview.value = { id: parseInt(objectId), name: objectName, type: objectType }
-  showReviewModal.value = true
-}
-
-const handleReviewSubmit = async (payload) => {
-  try {
-    const formData = new FormData()
-    formData.append('id_object', payload.id_object)
-    formData.append('text', payload.text)
-    formData.append('rating', payload.rating)
-    formData.append('category', payload.category)
-    if (payload.photo) formData.append('photo', payload.photo)
-    await api.post('/reviews/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-    invalidateRating(payload.id_object)
-    if (selectedCategory.value) await loadObjects(selectedCategory.value)
-    setSuccess('Отзыв успешно добавлен!')
-  } catch (err) { setError(err.response?.data?.detail || err.message || 'Не удалось отправить отзыв') }
-  showReviewModal.value = false
-}
-
-const handleReviewError = ({ message }) => setError(message)
-const handleReviewCancel = () => {}
-
 const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords, { 
   balloonContent: createBalloonContent({ ...obj, rating: null, ratingCount: 0 }, 0, obj.type, { 
     isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)), 
@@ -870,19 +894,44 @@ const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords,
 
 const { isAddingMode, showAddConfirm, showObjectModal, pendingObjectCoords, pendingAddress, confirmPosition, isGeocoding, toggleAddMode, handleMapClick, cancelAddObject, confirmAddObject, submitNewObject, resetAfterSubmit, cleanup: cleanupAddMode } = useAddObjectMode(toRef(() => map), mapContainer, (msg, duration) => setError(msg, duration), (msg, duration) => setSuccess(msg, duration), createNewObjectPlacemark, (endpoint, data) => api.post(endpoint, data))
 
+// В <script setup> MapView.vue, найдите handleObjectSubmit и замените на:
+
 const handleObjectSubmit = async (payload) => {
   loading.value = true
+  
   try {
     await submitNewObject(payload)
     cleanupAddMode()
     setSuccess(`Объект "${payload.name}" добавлен!`)
-    const newObjectType = payload.type || payload.type_name
-    selectedCategory.value = newObjectType
-    await loadObjects(newObjectType)
+    
+    // 🔥 Загружаем объекты с таймаутом, чтобы не зависнуть
+    const loadPromise = loadObjects(payload.type || payload.type_name)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Загрузка объектов превысила время')), 10000)
+    )
+    
+    await Promise.race([loadPromise, timeoutPromise])
+    
+    selectedCategory.value = payload.type || payload.type_name
+    
   } catch (err) {
     console.error('[ObjectSubmit] Ошибка:', err)
-    if (err.message !== 'duplicate_object') setError('Не удалось добавить объект.')
-  } finally { loading.value = false }
+    
+    if (err.message === 'duplicate_object') {
+      // Ошибка дубликата уже показана в submitNewObject
+      return
+    }
+    
+    if (err.message?.includes('время')) {
+      setError('Объект добавлен, но список не обновился. Обновите страницу.')
+    } else {
+      setError('Не удалось добавить объект. Попробуйте позже.')
+    }
+    
+  } finally {
+    // 🔥 Гарантированно сбрасываем загрузку
+    loading.value = false
+  }
 }
 
 const handleObjectCancel = () => cancelAddObject()
@@ -966,7 +1015,6 @@ onBeforeUnmount(() => {
   
   if (window.__openObjectDetails) delete window.__openObjectDetails
   if (window.__toggleBookmark) delete window.__toggleBookmark
-  if (window.__openReview) delete window.__openReview
 })
 
 const {

@@ -11,9 +11,11 @@
   "dependencies": {
     "@primevue/themes": "^4.5.4",
     "axios": "^1.15.0",
+    "chart.js": "^4.5.1",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
     "vue": "^3.5.32",
+    "vue-chartjs": "^5.3.3",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {

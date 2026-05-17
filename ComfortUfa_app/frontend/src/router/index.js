@@ -6,12 +6,14 @@ import ProfileView from '../views/ProfileView.vue'
 import AdminView from '../views/AdminView.vue'
 import AboutView from '../views/AboutView.vue'
 import FavoritesView from '../views/FavoritesView.vue'
+import StatisticView from '../views/StatisticView.vue'
 
 const routes = [
   { path: '/', name: 'Home', component: HomeView },
   { path: '/map', name: 'Map', component: MapView },
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },
   { path: '/favorites', name: 'Favorites', component: FavoritesView, meta: { requiresAuth: true } },
+  { path: '/statistics', name: 'Statistics', component: StatisticView },
   { path: '/admin', name: 'Admin', component: AdminView },
   { path: '/about', name: 'About', component: AboutView },
 ]

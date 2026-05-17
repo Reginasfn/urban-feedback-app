@@ -36,6 +36,7 @@
                         v-model="nickname"
                         class="full-input"
                         :class="{ 'p-invalid': submitted && !nickname }"
+                        autocomplete="username"
                     />
                     <label>Никнейм *</label>
                 </IftaLabel>
@@ -51,6 +52,7 @@
                         type="email"
                         class="full-input"
                         :class="{ 'p-invalid': submitted && !email }"
+                        autocomplete="email"
                     />
                     <label>Email *</label>
                 </IftaLabel>
@@ -70,6 +72,7 @@
                         mask="+7 (999) 999-99-99"
                         placeholder="+7 (___) ___-__-__"
                         class="full-input"
+                        autocomplete="tel"
                     />
                     <label>Телефон</label>
                 </IftaLabel>
@@ -86,6 +89,7 @@
                         class="full-input password-wrap"
                         inputClass="full-input-inner"
                         :class="{ 'p-invalid': submitted && !password }"
+                        autocomplete="new-password"
                     />
                     <label>Пароль *</label>
                 </IftaLabel>
@@ -110,6 +114,7 @@
                                 submitted &&
                                 password !== confirmPassword
                         }"
+                        autocomplete="new-password"
                     />
                     <label>Повтор пароля *</label>
                 </IftaLabel>
@@ -154,6 +159,7 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import InputMask from 'primevue/inputmask'
 import IftaLabel from 'primevue/iftalabel'
+import api from '@/services/api'
 
 export default {
     name: 'RegisterModal',
@@ -169,7 +175,7 @@ export default {
         visible: Boolean,
         loading: Boolean
     },
-    emits: ['update:visible', 'switch-to-login'],
+    emits: ['update:visible', 'switch-to-login', 'register-success', 'register-error'],
     data() {
         return {
             nickname: '',
@@ -193,14 +199,64 @@ export default {
 
         async handleSubmit() {
             this.submitted = true
-            if (!this.nickname || !this.email || !this.password) return
+            
+            // Валидация
+            if (!this.nickname || !this.email || !this.password) {
+                return
+            }
+            
+            if (!this.isValidEmail(this.email)) {
+                this.$emit('register-error', { message: 'Некорректный email' })
+                return
+            }
+            
+            if (this.password !== this.confirmPassword) {
+                this.$emit('register-error', { message: 'Пароли не совпадают' })
+                return
+            }
+            
+            if (this.password.length < 6) {
+                this.$emit('register-error', { message: 'Пароль должен быть не менее 6 символов' })
+                return
+            }
+            
+            // Отправка на сервер
+            this.internalLoading = true
+            
+            try {
+                const payload = {
+                    email: this.email,
+                    nickname: this.nickname,
+                    phone: this.phone || null,
+                    password: this.password
+                }
+                
+                const response = await api.post('/api/auth/register', payload)
+                
+                // Успешная регистрация
+                this.$emit('register-success', response.data)
+                
+                // Очистка формы
+                this.nickname = ''
+                this.email = ''
+                this.phone = ''
+                this.password = ''
+                this.confirmPassword = ''
+                this.submitted = false
+                
+            } catch (error) {
+                console.error('[Register] Error:', error)
+                const message = error.response?.data?.detail || 'Ошибка при регистрации'
+                this.$emit('register-error', { message })
+            } finally {
+                this.internalLoading = false
+            }
         }
     }
 }
 </script>
 
 <style scoped>
-
 /* ===== DIALOG HEADER FIX ===== */
 :deep(.p-dialog-header) {
     padding: 0 !important;
@@ -314,5 +370,4 @@ export default {
     color: #0f7a2e !important;
     font-weight: 600;
 }
-
 </style>

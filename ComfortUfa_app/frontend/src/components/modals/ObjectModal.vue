@@ -1,606 +1,619 @@
+<!-- frontend\src\components\modals\ObjectModal.vue -->
 <template>
-  <Dialog
-    :visible="visible"
-    @update:visible="onUpdateVisible"
-    modal
-    :header="''"
-    :style="{
-      width: '1100px',
-      maxWidth: '96vw'
-    }"
-    :contentStyle="{
-      minHeight: '780px',
-      maxHeight: '88vh',
-      overflow: 'hidden'
-    }"
+  <Dialog 
+    v-model:visible="isVisible" 
+    :header="null"
+    :modal="true" 
     :closable="true"
-    :close-on-escape="true"
-    :dismissable-mask="true"
-    class="object-details-modal"
-    style="font-family: Inter, system-ui, sans-serif"
+    :style="{ width: '520px', maxWidth: '96vw' }"
+    :contentStyle="{ padding: 0 }"
+    :pt="{
+      root: { class: 'rounded-2xl overflow-hidden shadow-2xl' },
+      header: { class: 'hidden' },
+      content: { class: 'p-0' },
+      footer: { class: 'p-0' }
+    }"
+    class="object-add-modal"
   >
-    <div v-if="!object" class="modal-loading">
-      <ProgressSpinner style="width: 48px; height: 48px" />
-      <p class="loading-text">Загрузка информации...</p>
+    <!-- Header Section -->
+    <div class="modal-header">
+      <div class="header-icon">
+        <i class="pi pi-map-marker"></i>
+      </div>
+      <h2 class="modal-title">Добавить объект</h2>
+      <p class="modal-subtitle">Укажите название и тип объекта на карте</p>
     </div>
 
-    <div v-else class="details-wrapper">
-      <!-- HERO HEADER -->
-      <section class="hero-header">
-        <div class="hero-title-block">
-          <h1 class="hero-title">{{ object.name }}</h1>
-        </div>
-
-        <div class="hero-rating">
-          <i class="pi pi-star-fill"></i>
-          <span v-if="object.rating_avg !== null && object.rating_avg !== undefined">
-            {{ Number(object.rating_avg).toFixed(1) }}
-          </span>
-          <span v-else>Нет оценок</span>
-          <small>({{ object.rating_count || 0 }})</small>
-        </div>
-      </section>
-
-      <!-- OBJECT CARD -->
-      <section class="object-card" style="min-width: 1040px;">
-        <div class="object-info-row">
-          <div class="object-info-left">
-            <div class="object-type-badge">
-              {{ object.type_name || 'Тип не указан' }}
-            </div>
-
-            <div v-if="object.address" class="info-row">
-              <i class="pi pi-map-marker"></i>
-              <span>{{ object.address }}</span>
-            </div>
-
-            <div v-if="object.description" class="description-box">
-              {{ object.description }}
-            </div>
-
-            <div v-if="object.extra_info" class="extra-grid">
-              <div
-                v-for="(value, key) in object.extra_info"
-                :key="key"
-                class="extra-item"
-              >
-                <span class="extra-label">{{ formatExtraKey(key) }}</span>
-                <span class="extra-value">{{ value }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="object-info-right">
-            <Button
-              label="Показать на карте"
-              icon="pi pi-map"
-              class="btn-map"
-              severity="success"
-              @click="onGoToMap"
-              style="height: 50px; width: 180px;"
-            />
+    <!-- Form Section -->
+    <div class="modal-body">
+      
+      <!-- Location Card -->
+      <div class="location-card">
+        <div class="location-row">
+          <i class="pi pi-map-marker location-icon"></i>
+          <div class="location-text">
+            <span class="location-label">Координаты:</span>
+            <span class="location-value">{{ formattedCoords }}</span>
           </div>
         </div>
-      </section>
-
-      <!-- REVIEWS -->
-      <section class="reviews-section">
-        <div class="section-header">
-          <div>
-            <h3>Отзывы</h3>
-            <p>{{ reviews.length }} шт.</p>
+        <div v-if="props.address" class="location-row">
+          <i class="pi pi-home location-icon"></i>
+          <div class="location-text">
+            <span class="location-label">Адрес:</span>
+            <span class="location-value">{{ props.address }}</span>
           </div>
-
-          <Button
-            label="Оставить отзыв"
-            icon="pi pi-pencil"
-            class="review-btn"
-            style="height: 50px; width: 180px;"
-            @click="openReviewForm"
-          />
         </div>
+      </div>
 
-        <Transition name="slide-fade">
-          <div v-if="showReviewForm" class="review-form-card">
-            <!-- Category selection as buttons -->
-            <div class="form-group">
-              <label class="form-label">Категория отзыва *</label>
-              <div class="category-buttons">
-                <button
-                  v-for="cat in reviewCategories"
-                  :key="cat.value"
-                  type="button"
-                  class="category-btn"
-                  :class="{ active: reviewForm.category === cat.value }"
-                  @click="reviewForm.category = cat.value"
-                >
-                  {{ cat.label }}
-                </button>
-              </div>
+      <!-- Name Field -->
+      <div class="form-field">
+        <label class="field-label" for="object-name">
+          <i class="pi pi-tag"></i>
+          Название объекта *
+        </label>
+        <InputText 
+          id="object-name"
+          v-model="formData.name" 
+          placeholder="Например: Скамейка у входа в парк" 
+          class="field-input"
+          :class="{ 'input-error': errors.name }"
+          :maxlength="100"
+        />
+        <small v-if="errors.name" class="error-message">
+          <i class="pi pi-exclamation-circle"></i> {{ errors.name }}
+        </small>
+      </div>
+
+      <!-- Type Field -->
+      <div class="form-field">
+        <label class="field-label" for="object-type">
+          <i class="pi pi-list"></i>
+          Тип объекта *
+        </label>
+        <Dropdown 
+          id="object-type"
+          v-model="formData.type" 
+          :options="availableTypes"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Выберите тип объекта..."
+          class="field-dropdown"
+          :class="{ 'input-error': errors.type }"
+          :filter="true"
+          filterPlaceholder="Поиск типа..."
+          :showClear="true"
+        >
+          <template #value="slotProps">
+            <div v-if="slotProps.value" class="dropdown-selected">
+              <i :class="getTypeIcon(slotProps.value)" class="dropdown-icon"></i>
+              <span>{{ getLabelByValue(slotProps.value) }}</span>
             </div>
-
-            <div class="form-group">
-              <label class="form-label">Оценка *</label>
-              <div class="rating-wrapper">
-                <Rating 
-                  v-model="reviewForm.rating" 
-                  :cancel="false"
-                  class="custom-rating"
-                />
-                <span class="rating-value">{{ reviewForm.rating }} из 5</span>
-              </div>
+            <span v-else class="dropdown-placeholder">{{ slotProps.placeholder }}</span>
+          </template>
+          <template #option="slotProps">
+            <div class="dropdown-option">
+              <i :class="getTypeIcon(slotProps.option.value)" class="dropdown-icon"></i>
+              <span class="dropdown-label">{{ slotProps.option.label }}</span>
             </div>
+          </template>
+        </Dropdown>
+        <small v-if="errors.type" class="error-message">
+          <i class="pi pi-exclamation-circle"></i> {{ errors.type }}
+        </small>
+      </div>
 
-            <div class="form-group">
-              <label class="form-label">Текст отзыва *</label>
-              <Textarea
-                v-model="reviewForm.text"
-                rows="4"
-                autoResize
-                class="w-full"
-                placeholder="Опишите ваше мнение об объекте..."
-              />
-            </div>
+    </div>
 
-            <!-- Photo attachment -->
-            <div class="form-group">
-              <label class="form-label">Фотографии объекта</label>
-              <div class="photo-upload-area" @click="triggerFileInput" @dragover.prevent @drop.prevent="handleDrop">
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  class="file-input"
-                  @change="handleFileSelect"
-                />
-                <div v-if="reviewForm.photos?.length" class="photo-preview-grid">
-                  <div v-for="(photo, index) in reviewForm.photos" :key="index" class="photo-preview-item">
-                    <img :src="photo.preview" :alt="photo.name" class="photo-preview" />
-                    <button type="button" class="photo-remove-btn" @click.stop="removePhoto(index)">
-                      <i class="pi pi-times"></i>
-                    </button>
-                  </div>
-                </div>
-                <div v-else class="photo-upload-placeholder">
-                  <i class="pi pi-image"></i>
-                  <span>Перетащите фото или нажмите для выбора</span>
-                  <small>Макс. 5 фото, до 10 МБ каждое</small>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <Button
-                label="Отмена"
-                severity="secondary"
-                text
-                @click="showReviewForm = false"
-              />
-              <Button
-                label="Отправить"
-                icon="pi pi-send"
-                :loading="submittingReview"
-                :disabled="!canSubmitReview"
-                @click="submitReview"
-              />
-            </div>
-          </div>
-        </Transition>
-
-        <div v-if="reviewsLoading" class="reviews-loading">
-          <ProgressSpinner style="width: 42px; height: 42px" />
-        </div>
-
-        <div v-else-if="reviews.length" class="reviews-list">
-          <article
-            v-for="review in reviews"
-            :key="review.id_review || review.id"
-            class="review-card"
-          >
-            <div class="review-header">
-              <Avatar
-                :label="getInitials(review.user_name || review.nickname)"
-                shape="circle"
-                class="review-avatar"
-              />
-
-              <div class="review-meta">
-                <div class="review-author">
-                  {{ review.user_name || review.nickname || 'Пользователь' }}
-                </div>
-
-                <div class="review-submeta">
-                  <Tag
-                    v-if="review.category_name"
-                    :value="review.category_name"
-                    severity="info"
-                  />
-
-                  <Rating 
-                    v-model="reviewForm.rating" 
-                    :cancel="false"
-                    class="custom-rating"
-                    :pt="{
-                      icon: {
-                        class: 'text-yellow-400',
-                        style: 'color: #fbbf24 !important; fill: #fbbf24 !important;'
-                      },
-                      iconActive: {
-                        class: 'text-yellow-400',
-                        style: 'color: #fbbf24 !important; fill: #fbbf24 !important;'
-                      }
-                    }"
-                  />
-
-                  <span class="review-date">
-                    {{ formatDate(review.created_at) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <p class="review-text">{{ review.text }}</p>
-            
-            <!-- Review photos -->
-            <div v-if="review.photos?.length" class="review-photos">
-              <img 
-                v-for="(photo, index) in review.photos" 
-                :key="index"
-                :src="photo.url || photo" 
-                :alt="`Фото ${index + 1}`"
-                class="review-photo"
-                @click="openPhotoViewer(photo.url || photo)"
-              />
-            </div>
-          </article>
-        </div>
-
-        <div v-else class="empty-state">
-          <i class="pi pi-comments"></i>
-          <h4>Пока нет отзывов</h4>
-          <p>Будьте первым, кто поделится своим мнением.</p>
-        </div>
-      </section>
+    <!-- Footer Section -->
+    <div class="modal-footer">
+      <div class="footer-actions">
+        <Button
+          label="Отмена"
+          severity="secondary"
+          text
+          @click="onCancel"
+          class="btn-cancel"
+        />
+        <Button
+          label="Сохранить объект"
+          icon="pi pi-check"
+          :loading="submitting"
+          :disabled="!canSubmit"
+          @click="onSubmit"
+          class="btn-submit"
+        />
+      </div>
     </div>
   </Dialog>
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
-
+import { ref, computed, watch } from 'vue'
 import Dialog from 'primevue/dialog'
-import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
-import Textarea from 'primevue/textarea'
-import ProgressSpinner from 'primevue/progressspinner'
-import Avatar from 'primevue/avatar'
-import Rating from 'primevue/rating'
-import Tag from 'primevue/tag'
+import Button from 'primevue/button'
 
+// ===== Props =====
 const props = defineProps({
-  object: { type: Object, default: null },
-  visible: { type: Boolean, default: false }
+  modelValue: { type: Boolean, default: false },
+  coordinates: {
+    type: Array,
+    required: false,
+    validator: (val) => {
+      if (val === null) return true
+      return val.length === 2 && typeof val[0] === 'number' && typeof val[1] === 'number'
+    }
+  },
+  address: { type: String, default: '' },
+  availableTypes: {
+    type: Array,
+    default: () => [
+      // 🔹 Оригинальные 8 типов (порядок сохранён)
+      { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
+      { label: 'Кафе', value: 'Кафе' },
+      { label: 'Фонарь', value: 'Фонарь' },
+      { label: 'Скамейка', value: 'Скамейка' },
+      { label: 'Парк', value: 'Парк' },
+      { label: 'Беседка', value: 'Беседка' },
+      { label: 'Остановка', value: 'Остановка' },
+      { label: 'Детская площадка', value: 'Детская площадка' },
+      { label: 'Спортивная площадка', value: 'Спортивная площадка' },
+      { label: 'Урна', value: 'Урна' },
+      { label: 'Мусорный контейнер', value: 'Мусорный контейнер' },
+      { label: 'Парковка', value: 'Парковка' },
+      { label: 'Пешеходный переход', value: 'Пешеходный переход' },
+      { label: 'Памятник', value: 'Памятник' },
+      { label: 'Информационный стенд', value: 'Информационный стенд' },
+      { label: 'Цветник', value: 'Цветник' },
+      { label: 'Дорожка', value: 'Дорожка' },
+      { label: 'Ограждение', value: 'Ограждение' }
+    ]
+  }
 })
 
+// ===== Emits =====
 const emit = defineEmits([
-  'update:visible',
-  'close',
-  'go-to-map',
-  'review-submitted'
+  'update:modelValue',
+  'submit',
+  'cancel',
+  'error'
 ])
 
-const reviews = ref([])
-const reviewsLoading = ref(false)
-const showReviewForm = ref(false)
-const submittingReview = ref(false)
-const fileInput = ref(null)
-
-const reviewCategories = [
-  { label: 'Проблема', value: 'Проблема' },
-  { label: 'Предложение', value: 'Предложение' },
-  { label: 'Похвала', value: 'Похвала' }
-]
-
-const reviewForm = ref({
-  category: null,
-  rating: 0,
-  text: '',
-  photos: []
+// ===== Внутреннее состояние =====
+const isVisible = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value)
 })
 
-const canSubmitReview = computed(() =>
-  reviewForm.value.category &&
-  reviewForm.value.rating > 0 &&
-  reviewForm.value.text.trim().length >= 5 &&
-  !submittingReview.value
-)
+const formData = ref({
+  name: '',
+  type: null
+})
 
-const openReviewForm = () => {
-  reviewForm.value = {
-    category: null,
-    rating: 0,
-    text: '',
-    photos: []
+const errors = ref({})
+const submitting = ref(false)
+
+// ===== Иконки для типов объектов (из categoryIcons) =====
+const typeIcons = {
+  'Камера видеонаблюдения': 'pi pi-video',
+  'Кафе': 'pi pi-map-marker',
+  'Фонарь': 'pi pi-lightbulb',
+  'Скамейка': 'pi pi-map-marker',
+  'Парк': 'pi pi-map-marker',
+  'Беседка': 'pi pi-building-columns',
+  'Остановка': 'pi pi-car',
+  'Детская площадка': 'pi pi-face-smile',
+  'Спортивная площадка': 'pi pi-bolt',
+  'Урна': 'pi pi-trash',
+  'Мусорный контейнер': 'pi pi-trash',
+  'Парковка': 'pi pi-car',
+  'Пешеходный переход': 'pi pi-directions-alt',
+  'Памятник': 'pi pi-flag',
+  'Информационный стенд': 'pi pi-info-circle',
+  'Цветник': 'pi pi-star',
+  'Дорожка': 'pi pi-arrow-right',
+  'Ограждение': 'pi pi-th-large'
+}
+
+const getTypeIcon = (value) => typeIcons[value] || 'pi pi-map-marker'
+
+const getLabelByValue = (value) => {
+  const found = props.availableTypes.find(t => t.value === value)
+  return found?.label || value
+}
+
+// ===== Форматирование координат =====
+const formattedCoords = computed(() => {
+  if (!props.coordinates || !Array.isArray(props.coordinates)) {
+    return 'Координаты не определены'
   }
-  showReviewForm.value = true
-}
+  const [lat, lon] = props.coordinates
+  return `${lat.toFixed(6)}, ${lon.toFixed(6)}`
+})
 
-const triggerFileInput = () => {
-  fileInput.value?.click()
-}
+// ===== Валидация =====
+const canSubmit = computed(() => {
+  return formData.value.name?.trim().length >= 3 && 
+         formData.value.type && 
+         !submitting.value
+})
 
-const handleFileSelect = (event) => {
-  const files = Array.from(event.target.files || [])
-  addPhotos(files)
-  event.target.value = ''
-}
-
-const handleDrop = (event) => {
-  const files = Array.from(event.dataTransfer.files || [])
-  const imageFiles = files.filter(file => file.type.startsWith('image/'))
-  addPhotos(imageFiles)
-}
-
-const addPhotos = (files) => {
-  const maxPhotos = 5
-  const maxSize = 10 * 1024 * 1024
+const validate = () => {
+  errors.value = {}
   
-  for (const file of files) {
-    if (reviewForm.value.photos.length >= maxPhotos) break
-    if (file.size > maxSize) continue
-    
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      reviewForm.value.photos.push({
-        file,
-        name: file.name,
-        size: file.size,
-        preview: e.target.result
-      })
-    }
-    reader.readAsDataURL(file)
+  const name = formData.value.name?.trim()
+
+  if (!name) {
+    errors.value.name = 'Введите название объекта'
+  } else if (name.length < 3) {
+    errors.value.name = 'Минимум 3 символа'
+  } else if (/^\d+$/.test(name)) {
+    errors.value.name = 'Название должно содержать буквы'
   }
+  
+  if (!formData.value.type) {
+    errors.value.type = 'Выберите тип объекта'
+  }
+  
+  return Object.keys(errors.value).length === 0
 }
 
-const removePhoto = (index) => {
-  reviewForm.value.photos.splice(index, 1)
+// ===== Обработчики =====
+const onCancel = () => {
+  emit('cancel')
+  emit('update:modelValue', false) 
 }
 
-const loadReviews = async () => {
-  if (!props.object?.id_object) return
+const resetForm = () => {
+  formData.value = { name: '', type: null }
+  errors.value = {}
+}
 
-  reviewsLoading.value = true
-
+const onSubmit = async () => {
+  if (!validate()) return
+  
+  submitting.value = true
+  
   try {
-    const response = await fetch(
-      `/api/objects/${props.object.id_object}/ratings?limit=50&offset=0`
-    )
-
-    const data = await response.json()
-    reviews.value = data.items || data || []
-  } catch (error) {
-    console.error(error)
-    reviews.value = []
-  } finally {
-    reviewsLoading.value = false
-  }
-}
-
-const submitReview = async () => {
-  emit('review-submitted', {
-    ...reviewForm.value,
-    photos: reviewForm.value.photos.map(p => p.file)
-  })
-  showReviewForm.value = false
-}
-
-const onGoToMap = () => {
-  emit('go-to-map', props.object)
-  emit('update:visible', false)
-}
-
-const onUpdateVisible = (value) => {
-  emit('update:visible', value)
-  if (!value) {
-    showReviewForm.value = false
-    reviewForm.value.photos = []
-    emit('close')
-  }
-}
-
-const getInitials = (name) => {
-  if (!name) return 'U'
-  return name
-    .split(' ')
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-}
-
-const formatDate = (date) => {
-  if (!date) return ''
-
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
-  })
-}
-
-const formatExtraKey = (key) => {
-  const labels = {
-    phone: 'Телефон',
-    hours: 'Часы работы',
-    website: 'Сайт',
-    price_range: 'Ценовой диапазон'
-  }
-
-  return labels[key] || key
-}
-
-const openPhotoViewer = (url) => {
-  window.open(url, '_blank')
-}
-
-watch(
-  () => props.visible,
-  (value) => {
-    if (value && props.object?.id_object) {
-      loadReviews()
+    const payload = {
+      name: formData.value.name.trim(),
+      type: formData.value.type,
+      coords: props.coordinates
     }
+    
+    emit('submit', payload)
+    isVisible.value = false
+    resetForm()
+    
+  } catch (err) {
+    console.error('[ObjectModal] Ошибка:', err)
+    emit('error', { message: 'Не удалось сохранить объект' })
+  } finally {
+    submitting.value = false
   }
-)
+}
+
+// ===== Сброс при открытии =====
+watch(() => props.modelValue, (newVal) => {
+  if (newVal) {
+    resetForm()
+  }
+})
+
+defineExpose({ resetForm })
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+/* ===== MODAL HEADER ===== */
+.modal-header {
+  text-align: center;
+  padding: 2rem 2rem 1.5rem;
+  background: linear-gradient(135deg, #168f04 0%, #0d5a02 100%);
+  position: relative;
+  overflow: hidden;
+}
 
-.details-wrapper {
+.modal-header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  animation: pulse 4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+.header-icon {
+  width: 70px;
+  height: 70px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.header-icon i {
+  font-size: 2rem;
+  color: white;
+}
+
+.modal-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  margin: 0 0 0.5rem 0;
+  position: relative;
+  z-index: 1;
+}
+
+.modal-subtitle {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  position: relative;
+  z-index: 1;
+  font-weight: 500;
+}
+
+/* ===== MODAL BODY ===== */
+.modal-body {
+  padding: 1.5rem 2rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 0px 28px 20px 28px;
-  background: linear-gradient(180deg, #ffffff 0%, #d1d7d1 100%);
-  overflow-y: auto;
-  max-height: calc(97vh - 100px);
+  gap: 1.25rem;
 }
 
-.hero-header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 50px;
-  flex-wrap: wrap;
-  text-align: center;
-}
-
-.hero-title {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 900;
-  color: #192219;
-}
-
-.hero-rating {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 14px;
-  background: rgba(218, 176, 79, 0.312);
-  color: #d39312;
-  font-weight: 800;
-}
-
-.object-card, .reviews-section {
-  background: rgba(255, 255, 255, 0.763);
-  border-radius: 10px;
-  padding: 36px 32px 20px 32px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
-}
-
-.object-info-row {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.object-info-left {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 80px;
-}
-
-.object-info-right {
-  display: flex;
-  align-items: flex-start;
-  margin-top: -7px;
-}
-
-/* === OBJECT TYPE BADGE — В СТИЛЕ РЕФЕРЕНСА === */
-.object-type-badge {
-  display: inline-block;
-  margin-bottom: 18px;
-  padding: 10px 16px;
-  border-radius: 12px;
+/* ===== LOCATION CARD ===== */
+.location-card {
   background: rgba(22, 143, 4, 0.08);
   border: 1px solid rgba(22, 143, 4, 0.2);
-  color: #168f04;
-  font-weight: 700;
-  font-size: 13px;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
 }
 
-.info-row {
+.location-row {
   display: flex;
-  gap: 12px;
-  margin-bottom: 18px;
-  color: #475569;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
 }
 
-.description-box {
-  padding: 18px;
-  border-radius: 18px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  line-height: 1.8;
-  margin-bottom: 20px;
+.location-row:first-child {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed rgba(22, 143, 4, 0.2);
+  margin-bottom: 0.5rem;
 }
 
-.extra-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  margin-bottom: 20px;
+.location-icon {
+  font-size: 1rem;
+  color: #168f04;
+  margin-top: 3px;
+  flex-shrink: 0;
 }
 
-.extra-item {
-  padding: 14px;
-  border-radius: 16px;
-  background: #f8fafc;
+.location-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
-.extra-label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 11px;
-  font-weight: 800;
-  color: #94a3b8;
+.location-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-.extra-value {
+.location-value {
+  font-size: 0.9rem;
   font-weight: 600;
-  color: #0f172a;
+  color: #1e293b;
+  word-break: break-all;
 }
 
-/* === BUTTON STYLES — ИЗ РЕФЕРЕНСА === */
-:deep(.p-button) { 
-  border-radius: 10px !important; 
+/* ===== FORM FIELDS ===== */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.field-label i {
+  color: #168f04;
+  font-size: 0.9rem;
+}
+
+.field-input,
+.field-dropdown {
+  height: 52px !important;
+  border: 2px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 0 1rem !important;
+  font-size: 1rem !important;
+  transition: all 0.3s ease !important;
+  background: #fff !important;
+}
+
+.field-input:hover,
+.field-dropdown:hover {
+  border-color: #cbd5e1 !important;
+}
+
+.field-input:focus,
+.field-dropdown:focus-within {
+  border-color: #168f04 !important;
+  box-shadow: 0 0 0 4px rgba(22, 143, 4, 0.1) !important;
+  outline: none !important;
+}
+
+.input-error {
+  border-color: #ef4444 !important;
+  background: #fef2f2 !important;
+}
+
+.input-error:focus {
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+}
+
+.error-message {
+  font-size: 0.8rem;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: -0.25rem;
+}
+
+/* ===== DROPDOWN STYLES ===== */
+:deep(.field-dropdown .p-dropdown) {
+  height: 52px !important;
+  width: 100% !important;
+}
+
+:deep(.field-dropdown .p-dropdown-label) {
+  padding: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.dropdown-selected,
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.dropdown-icon {
+  font-size: 1.1rem;
+  color: #168f04;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.dropdown-label {
+  font-size: 0.95rem;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.dropdown-placeholder {
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+:deep(.p-dropdown-panel) {
+  border-radius: 14px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(22, 143, 4, 0.2) !important;
+  margin-top: 8px !important;
+}
+
+:deep(.p-dropdown-item) {
+  padding: 0.75rem 1rem !important;
+  font-size: 0.95rem !important;
+  border-radius: 8px !important;
+  margin: 2px 8px !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.p-dropdown-item:hover) {
+  background: rgba(22, 143, 4, 0.08) !important;
+  color: #168f04 !important;
+}
+
+:deep(.p-dropdown-item.p-highlight) {
+  background: linear-gradient(135deg, #168f04, #0d5a02) !important;
+  color: white !important;
+}
+
+:deep(.p-dropdown-filter-container) {
+  padding: 0.75rem 1rem !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+:deep(.p-dropdown-filter) {
+  border-radius: 8px !important;
+  border: 1px solid #cbd5e1 !important;
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.9rem !important;
+}
+
+/* ===== FOOTER ===== */
+.modal-footer {
+  padding: 1rem 2rem 1.5rem;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.btn-cancel {
+  height: 48px !important;
+  border-radius: 12px !important;
   font-weight: 600 !important;
-  font-size: 16px !important;
-  padding: 0.625rem 1.25rem !important;
+  font-size: 0.95rem !important;
+  padding: 0 1.5rem !important;
 }
 
-:deep(.p-button:not(.p-button-secondary)) { 
-  background: linear-gradient(135deg, #168f04, #007306) !important; 
-  border: none !important; 
-  color: #fff !important;
+.btn-submit {
+  height: 48px !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  font-size: 0.95rem !important;
+  padding: 0 1.5rem !important;
+  background: linear-gradient(135deg, #168f04 0%, #0d5a02 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(22, 143, 4, 0.25) !important;
+  transition: all 0.3s ease !important;
 }
 
-:deep(.p-button:not(.p-button-secondary):hover) { 
-  box-shadow: 0 4px 14px rgba(22,143,4,0.4) !important; 
+.btn-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(22, 143, 4, 0.35) !important;
 }
 
-:deep(.p-button:disabled) { 
-  opacity: 0.7 !important; 
-  cursor: not-allowed !important; 
+.btn-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ===== BUTTON OVERRIDES ===== */
+:deep(.p-button) {
+  transition: all 0.3s ease !important;
 }
 
 :deep(.p-button.p-button-secondary) {
@@ -615,474 +628,74 @@ watch(
   color: #1e293b !important;
 }
 
-:deep(.p-button.p-button-text) {
-  color: #64748b !important;
+/* ===== ANIMATIONS ===== */
+.modal-body {
+  animation: slideUp 0.4s ease-out;
 }
 
-:deep(.p-button.p-button-text:hover) {
-  background-color: rgba(0,0,0,0.04) !important;
-  color: #334155 !important;
-}
-
-:deep(.p-button .p-button-loading-icon) {
-  margin-right: 6px !important;
-}
-/* === END BUTTON STYLES === */
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.section-header h3 {
-  margin: 0;
-  font-size: 1.6rem;
-  font-weight: 800;
-}
-
-.review-form-card {
-  margin-bottom: 24px;
-  padding: 24px;
-  border-radius: 24px;
-  background: #f8fffa;
-  border: 1px solid rgba(16, 185, 129, 0.18);
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.form-label {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-/* === CATEGORY BUTTONS — В СТИЛЕ КНОПОК РЕФЕРЕНСА === */
-.category-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.category-btn {
-  padding: 0.625rem 1.25rem;
-  border-radius: 10px;
-  border: 2px solid #e2e8f0;
-  background: #fff;
-  color: #334155;
-  font-weight: 600;
-  font-size: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.category-btn:hover {
-  border-color: #168f04;
-  background: rgba(22, 143, 4, 0.08);
-  color: #168f04;
-}
-
-.category-btn.active {
-  background: linear-gradient(135deg, #168f04, #007306);
-  border-color: #168f04;
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(22,143,4,0.4);
-}
-
-.category-btn.active:hover {
-  box-shadow: 0 6px 20px rgba(22,143,4,0.55);
-  transform: translateY(-1px);
-}
-
-/* === RATING STYLES — ЖЁЛТЫЕ ЗВЁЗДЫ, ГАРАНТИРОВАННО ✅ === */
-.rating-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Все звёзды по умолчанию — светло-серые */
-:deep(.custom-rating .p-rating-item .p-rating-icon),
-:deep(.custom-rating .p-rating-icon.pi-star),
-:deep(.custom-rating .p-rating-icon) {
-  color: #cbd5e1 !important;
-  font-size: 24px !important;
-  transition: all 0.15s ease !important;
-}
-
-/* Активные звёзды — ТОЧНО ЖЁЛТЫЕ */
-:deep(.custom-rating .p-rating-item.p-rating-item-active .p-rating-icon),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon.pi-star-fill),
-:deep(.custom-rating .p-rating-icon.pi-star-fill),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon) {
-  color: #f59e0b !important;
-  fill: #f59e0b !important;
-}
-
-/* При наведении — тоже жёлтые */
-:deep(.custom-rating .p-rating-item:hover .p-rating-icon) {
-  transform: scale(1.1) !important;
-  color: #f59e0b !important;
-}
-
-/* Глобальное переопределение для PrimeVue Rating */
-:deep(.p-rating .p-rating-item-active .p-rating-icon),
-:deep(.p-rating .p-rating-icon.pi-star-fill) {
-  color: #f59e0b !important;
-  fill: #f59e0b !important;
-}
-
-.rating-value {
-  font-weight: 700;
-  font-size: 15px;
-  color: #f59e0b !important;
-}
-/* === END RATING STYLES === */
-
-/* Photo upload styles */
-.photo-upload-area {
-  border: 2px dashed #cbd5e1;
-  border-radius: 14px;
-  padding: 20px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: #fff;
-}
-
-.photo-upload-area:hover {
-  border-color: #168f04;
-  background: rgba(22, 143, 4, 0.08);
-}
-
-.file-input {
-  display: none;
-}
-
-.photo-upload-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: #64748b;
-}
-
-.photo-upload-placeholder i {
-  font-size: 32px;
-  color: #168f04;
-}
-
-.photo-upload-placeholder small {
-  color: #94a3b8;
-}
-
-.photo-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 12px;
-}
-
-.photo-preview-item {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.photo-preview {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.photo-remove-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.6);
-  color: white;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-}
-
-.photo-remove-btn:hover {
-  background: rgba(0,0,0,0.8);
-}
-
-/* Review photos display */
-.review-photos {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.review-photo {
-  width: 60px;
-  height: 60px;
-  border-radius: 10px;
-  object-fit: cover;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.review-photo:hover {
-  transform: scale(1.05);
-}
-
-.reviews-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.review-card {
-  padding: 20px;
-  border-radius: 20px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-}
-
-.review-header {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.review-avatar {
-  background: linear-gradient(135deg, #168f04, #007306);
-  color: white;
-}
-
-.review-author {
-  font-weight: 800;
-  margin-bottom: 6px;
-}
-
-.review-submeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-
-.review-text {
-  margin: 0;
-  line-height: 1.8;
-  color: #334155;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 56px 24px;
-  color: #64748b;
-}
-
-.empty-state i {
-  font-size: 56px;
-  margin-bottom: 16px;
-}
-
-.modal-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 80px;
-}
-
-.slide-fade-enter-active,
-.slide-fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.slide-fade-enter-from,
-.slide-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-:deep(.p-dialog) {
-  border-radius: 32px;
-  overflow: hidden;
-}
-
-:deep(.p-dialog-header) {
-  display: none;
-}
-
-:deep(.p-dialog-content) {
-  padding: 0;
-}
-
-:deep(.p-inputtext),
-:deep(.p-dropdown),
-:deep(.p-inputtextarea) {
-  border-radius: 12px;
-  border: 2px solid #e2e8f0;
-  transition: border-color 0.2s;
-  padding: 0.75rem 1rem;
-}
-
-:deep(.p-inputtext:focus),
-:deep(.p-dropdown:focus),
-:deep(.p-inputtextarea:focus) {
-  border-color: #168f04;
-  box-shadow: 0 0 0 4px rgba(22,143,4,0.12);
-}
-
-/* УБРАНО: старое правило, которое могло конфликтовать */
-/* :deep(.p-rating .p-rating-item-active .p-rating-icon) { color: #168f04; } */
-
-@media (max-width: 768px) {
-  .details-wrapper {
-    padding: 16px;
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-
-  .object-card,
-  .reviews-section {
-    padding: 20px;
-    border-radius: 22px;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
+}
 
-  .hero-header,
-  .section-header,
-  .form-actions {
-    flex-direction: column;
-    align-items: stretch;
+/* ===== RESPONSIVE ===== */
+@media (max-width: 576px) {
+  .modal-header {
+    padding: 1.5rem 1.5rem 1rem;
   }
-
-  .object-info-row {
-    flex-direction: column;
+  
+  .modal-body {
+    padding: 1.25rem 1.5rem;
   }
-
-  .object-info-right {
-    width: 100%;
-    justify-content: center;
+  
+  .modal-footer {
+    padding: 0.75rem 1.5rem 1.25rem;
   }
-
-  .btn-map :deep(.p-button),
-  .review-btn :deep(.p-button),
-  :deep(.form-actions .p-button) {
+  
+  .footer-actions {
+    flex-direction: column-reverse;
+  }
+  
+  .btn-cancel,
+  .btn-submit {
     width: 100% !important;
-    min-width: unset !important;
   }
-
-  .category-buttons {
-    flex-direction: column;
+  
+  .modal-title {
+    font-size: 1.25rem;
   }
-
-  .category-btn {
-    width: 100%;
+  
+  .header-icon {
+    width: 60px;
+    height: 60px;
   }
-
-  .hero-title {
+  
+  .header-icon i {
     font-size: 1.5rem;
   }
 }
 
-/* === ПРИНУДИТЕЛЬНОЕ ПЕРЕОПРЕДЕЛЕНИЕ ЦВЕТА ЗВЁЗД === */
-:deep(.p-rating .p-rating-icon) {
-  color: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
+/* ===== SCROLLBAR ===== */
+.modal-body::-webkit-scrollbar {
+  width: 6px;
 }
 
-:deep(.p-rating .p-rating-icon.pi-star-fill),
-:deep(.p-rating .p-rating-item-active .p-rating-icon),
-:deep(.p-rating-item-active .p-rating-icon.pi-star-fill) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-  text-shadow: none !important;
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Для состояния hover */
-:deep(.p-rating .p-rating-item:hover .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
+.modal-body::-webkit-scrollbar-thumb {
+  background: rgba(22, 143, 4, 0.3);
+  border-radius: 3px;
 }
 
-/* Глобальное переопределение для ВСЕХ рейтингов */
-:global(.p-rating .p-rating-icon.pi-star-fill) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-:global(.p-rating .p-rating-item-active .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-/* === ОКОНЧАТЕЛЬНОЕ РЕШЕНИЕ ДЛЯ ЖЁЛТЫХ ЗВЁЗД === */
-
-/* Переопределяем CSS-переменные PrimeVue */
-:deep(.p-rating) {
-  --p-rating-icon-active-color: #fbbf24 !important;
-  --p-rating-icon-color: #cbd5e1 !important;
-}
-
-/* Максимально специфичные селекторы */
-:deep(.p-rating .p-rating-item .p-rating-icon.pi-star),
-:deep(.p-rating .p-rating-item .p-rating-icon.pi-star-fill),
-:deep(.p-rating .p-rating-item-active .p-rating-icon),
-:deep(.custom-rating .p-rating-item .p-rating-icon),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon) {
-  color: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
-  background: transparent !important;
-}
-
-/* АКТИВНЫЕ ЗВЁЗДЫ — ЖЁЛТЫЕ */
-:deep(.p-rating .p-rating-item-active .p-rating-icon.pi-star-fill),
-:deep(.p-rating .p-rating-item-active .p-rating-icon.pi-star),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon.pi-star-fill),
-:deep(.custom-rating .p-rating-item-active .p-rating-icon),
-:deep(.p-rating .p-rating-icon.pi-star-fill:not(.p-rating-item)) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-  background: transparent !important;
-}
-
-/* Hover состояние */
-:deep(.p-rating .p-rating-item:hover .p-rating-icon),
-:deep(.custom-rating .p-rating-item:hover .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-  transform: scale(1.1);
-}
-
-/* Глобальные стили для ВСЕХ рейтингов на странице */
-:global(.p-rating .p-rating-icon.pi-star-fill),
-:global(.p-rating .p-rating-item-active .p-rating-icon) {
-  color: #fbbf24 !important;
-  fill: #fbbf24 !important;
-}
-
-/* Если PrimeVue использует inline стили */
-:deep(.p-rating .p-rating-item .p-rating-icon[style*="color"]),
-:deep(.p-rating .p-rating-item-active .p-rating-icon[style*="color"]) {
-  color: #cbd5e1 !important;
-}
-
-:deep(.p-rating .p-rating-item-active .p-rating-icon[style*="color"]) {
-  color: #fbbf24 !important;
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 143, 4, 0.5);
 }
 </style>

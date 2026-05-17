@@ -20,13 +20,8 @@ export function useAddObjectMode(
   const isGeocoding = ref(false)
 
   const getAddressFromCoords = async (coords, apiKey) => {
-    if (!coords || !Array.isArray(coords) || coords.length !== 2) {
-      return null
-    }
-
-    if (!apiKey) {
-      return null
-    }
+    if (!coords || !Array.isArray(coords) || coords.length !== 2) return null
+    if (!apiKey) return null
 
     isGeocoding.value = true
     try {
@@ -40,7 +35,8 @@ export function useAddObjectMode(
             results: 1,
             lang: 'ru_RU',
             format: 'json'
-          }
+          },
+          timeout: 10000 // 🔥 Таймаут 10 секунд
         }
       )
 
@@ -56,14 +52,10 @@ export function useAddObjectMode(
 
   const calculateConfirmPosition = (event) => {
     const containerRect = mapContainerRef.value?.getBoundingClientRect()
-    if (!containerRect || !event) {
-      return { top: '50%', left: '50%' }
-    }
+    if (!containerRect || !event) return { top: '50%', left: '50%' }
 
     const position = event.get?.('position')
-    if (!position) {
-      return { top: '50%', left: '50%' }
-    }
+    if (!position) return { top: '50%', left: '50%' }
 
     return {
       top: `${position[1] + 10}px`,
@@ -72,9 +64,7 @@ export function useAddObjectMode(
   }
 
   const handleMapClick = async (event, yandexApiKey) => {
-    if (!isAddingMode.value || !mapRef.value) {
-      return false
-    }
+    if (!isAddingMode.value || !mapRef.value) return false
 
     const coords = event.get?.('coords')
     if (!coords || !Array.isArray(coords)) {
@@ -169,17 +159,31 @@ export function useAddObjectMode(
 
     try {
       console.log('[AddObject] Отправка данных:', fullPayload)
-      const response = await apiPost('/api/objects', fullPayload)
       
-      // Маркер добавится автоматически через loadObjects() при обновлении списка!
+      // 🔥 Добавляем таймаут к запросу
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 секунд
+      
+      const response = await apiPost('/api/objects', fullPayload, {
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      
       return { success: true, data: response.data }
     } catch (err) {
       console.error('[AddObject] Ошибка:', err)
+      
+      if (err.name === 'AbortError') {
+        throw new Error('Сервер не отвечает. Попробуйте позже.')
+      }
+      
       if (err.response?.status === 409 && err.response?.data?.detail?.error === 'duplicate_object') {
         const detail = err.response.data.detail
         setError(`⚠️ ${detail.message}`, 8000)
         throw new Error('duplicate_object')
       }
+      
       throw err
     }
   }
