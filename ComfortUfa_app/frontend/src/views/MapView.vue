@@ -3,7 +3,6 @@
   <div class="map-page">
     <!-- ===== ЛЕВЫЙ ПЛАВАЮЩИЙ САЙДБАР ===== -->
     <div class="sidebar">
-      <!-- 🔍 Поиск по названию/адресу -->
       <div class="sidebar-section">
         <label class="sidebar-label">Поиск</label>
         <AutoComplete 
@@ -219,7 +218,6 @@
       @error="handleObjectError"
     />
 
-    <!-- 🔥 МОДАЛКА ДЕТАЛЕЙ ОБЪЕКТА -->
     <ObjectDetailsModal
       v-model:visible="modalVisible"
       :object="modalObject"
@@ -318,7 +316,6 @@ const objectTypeOptions = [
   { label: 'Ограждение', value: 'Ограждение' }
 ]
 
-// 🔥 ПЕРЕМЕННЫЕ ДЛЯ МОДАЛКИ
 const modalVisible = ref(false)
 const modalObject = ref(null)
 
@@ -335,7 +332,6 @@ const UFA_CENTER = [54.7388, 55.9721]
 const DEFAULT_ZOOM = 12
 
 const categories = [
-  // 🔹 Оригинальные 8 типов (порядок сохранён)
   'Камера видеонаблюдения', 
   'Кафе', 
   'Фонарь', 
@@ -344,8 +340,6 @@ const categories = [
   'Беседка', 
   'Остановка', 
   'Детская площадка',
-  
-  // 🔹 Новые типы для благоустройства (только с маркерами)
   'Спортивная площадка',
   'Урна',
   'Мусорный контейнер',
@@ -359,7 +353,6 @@ const categories = [
 ]
 
 const markerConfig = {
-  // 🔹 Оригинальные 8 типов (твои пресеты сохранены)
   "Кафе": { preset: 'islands#redFoodCircleIcon' },
   "Скамейка": { preset: 'islands#brownCircleIcon' },
   "Фонарь": { preset: 'islands#yellowInfoCircleIcon' },
@@ -368,8 +361,6 @@ const markerConfig = {
   "Остановка": { preset: 'islands#blueMassTransitCircleIcon' },
   "Детская площадка": { preset: 'islands#orangeFamilyCircleIcon' },
   "Камера видеонаблюдения": { preset: 'islands#blackVideoCircleIcon' },
-
-  // 🔹 Новые типы (рабочие *CircleIcon пресеты)
   "Спортивная площадка": { preset: 'islands#greenCircleIcon' },
   "Урна": { preset: 'islands#grayCircleIcon' },
   "Мусорный контейнер": { preset: 'islands#grayCircleIcon' },
@@ -383,7 +374,6 @@ const markerConfig = {
 }
 
 const categoryIcons = {
-  // 🔹 Оригинальные 8 типов (твои иконки сохранены)
   'Камера видеонаблюдения': 'pi pi-video', 
   'Кафе': 'pi pi-map-marker', 
   'Фонарь': 'pi pi-lightbulb',
@@ -392,8 +382,6 @@ const categoryIcons = {
   'Беседка': 'pi pi-building-columns',
   'Остановка': 'pi pi-car', 
   'Детская площадка': 'pi pi-face-smile',
-
-  // 🔹 Новые типы (только те, что есть в markerConfig)
   'Спортивная площадка': 'pi pi-bolt',
   'Урна': 'pi pi-trash',
   'Мусорный контейнер': 'pi pi-trash',
@@ -465,8 +453,17 @@ const goToMyLocation = async () => {
       ymaps: window.ymaps, 
       mapInstance: map, 
       createMarkerFn: createCustomUserMarker, 
-      onPositionReceived: ({ coords }) => console.log(`[Geo] Позиция получена:`, coords)
+      onPositionReceived: ({ coords }) => console.log(`[Geo] Позиция получена:`, coords),
+      useFallback: true, // 🔥 ВКЛЮЧИТЬ ЗАГЛУШКУ
+      timeout: 10000 // 🔥 Ждать 10 секунд
     })
+    
+    // Проверяем, была ли заглушка
+    if (result?.isFallback) {
+      console.log('Использована заглушка')
+      // Можно показать уведомление, что это не точное местоположение
+    }
+    
     syncGeoState()
     if (activeFilter.value === 'nearby' && result?.coords) {
       updateUserCoords(result.coords)
@@ -904,7 +901,6 @@ const handleObjectSubmit = async (payload) => {
     cleanupAddMode()
     setSuccess(`Объект "${payload.name}" добавлен!`)
     
-    // 🔥 Загружаем объекты с таймаутом, чтобы не зависнуть
     const loadPromise = loadObjects(payload.type || payload.type_name)
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Загрузка объектов превысила время')), 10000)
@@ -929,7 +925,6 @@ const handleObjectSubmit = async (payload) => {
     }
     
   } finally {
-    // 🔥 Гарантированно сбрасываем загрузку
     loading.value = false
   }
 }
@@ -1042,21 +1037,12 @@ const {
 
 loadObjectsRef.value = loadObjects
 
-// ===== ВЫБОР КАТЕГОРИИ (обновляет UI + загружает объекты) =====
-// 🔥 ЭТА ФУНКЦИЯ ОБНОВЛЯЕТ selectedCategory.value ПЕРЕД ЗАГРУЗКОЙ
 const selectCategory = (cat) => {
-  selectedCategory.value = cat  // Обновляем реактивную переменную для UI
-  loadObjects(cat)              // Загружаем объекты
+  selectedCategory.value = cat  
+  loadObjects(cat)          
 }
 
-// ==========================================
-// 🔥 НАВИГАЦИЯ ИЗ ИЗБРАННОГО (ИСПРАВЛЕНО) 🔥
-// ==========================================
-
-// 1. Сначала объявляем флаг
 let navigationHandled = false
-
-// 2. Затем объявляем функции, которые используются в watch
 
 // Функция попытки навигации
 const tryNavigateFromQuery = (query) => {
@@ -1066,7 +1052,6 @@ const tryNavigateFromQuery = (query) => {
     return
   }
   
-  // Проверка флага, чтобы не запустить дважды
   if (navigationHandled) {
     console.log('[MapView] Navigation already handled, skipping')
     return
@@ -1079,7 +1064,6 @@ const tryNavigateFromQuery = (query) => {
   console.log('[MapView] Attempting navigation to object:', objectId)
   navigationHandled = true // Ставим флаг
   
-  // Если есть полные данные в query — используем их
   if (query.name && query.type) {
     const obj = {
       id_object: Number(objectId),
@@ -1095,19 +1079,15 @@ const tryNavigateFromQuery = (query) => {
       navigateToObject(obj)
     }
   } else {
-    // Если только ID — загружаем полные данные с бэкенда
     loadObjectByIdAndNavigate(Number(objectId), focus ? focus.split(',').map(Number) : null, zoom)
   }
   
-  // Очищаем query params после навигации
   setTimeout(() => {
     router.replace({ query: {} })
-    // Сбрасываем флаг через 2 секунды
     setTimeout(() => { navigationHandled = false }, 2000)
   }, 100)
 }
 
-// Вспомогательная функция: загрузка объекта по ID и навигация
 const loadObjectByIdAndNavigate = async (objectId, coords, zoom = 16) => {
   try {
     console.log('[MapView] Loading object by ID:', objectId)
@@ -1125,7 +1105,6 @@ const loadObjectByIdAndNavigate = async (objectId, coords, zoom = 16) => {
     console.error('[MapView] Error loading object for navigation:', err)
     setError('Не удалось загрузить объект для навигации')
     
-    // Фолбэк: просто центрируем карту на координатах
     if (coords && map) {
       await map.setCenter(coords, zoom, { duration: 500 })
       setSuccess('Объект не найден, но карта перемещена')
@@ -1133,9 +1112,6 @@ const loadObjectByIdAndNavigate = async (objectId, coords, zoom = 16) => {
   }
 }
 
-// 3. И только в самом конце объявляем watch, которые вызывают эти функции
-
-// Watch за query params
 watch(
   () => router.currentRoute.value.query,
   (query) => {
@@ -1148,7 +1124,6 @@ watch(
   { immediate: true }
 )
 
-// Watch за инициализацией карты
 watch(
   () => isMapInitialized.value,
   (initialized) => {

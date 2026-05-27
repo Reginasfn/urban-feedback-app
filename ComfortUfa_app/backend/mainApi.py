@@ -15,10 +15,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Твой фронтенд
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  
     allow_credentials=True,
-    allow_methods=["*"],  # Разрешаем все методы
-    allow_headers=["*"],  # Разрешаем все заголовки
+    allow_methods=["*"],  
+    allow_headers=["*"],  
 )
 
 app.include_router(objects.router)
@@ -31,10 +31,9 @@ app.mount("/resources", StaticFiles(directory="resources"), name="resources")
 
 @app.on_event("startup")
 async def startup_event():
-    # Создаём таблицы, если их нет
-    print("🔥 MAIN API LOADED")
+    print("- MAIN API LOADED")
     Base.metadata.create_all(bind=engine)
-    print("🔌 Подключение к БД: db_citycare@localhost:5432")
+    print("Подключение к БД: db_citycare@localhost:5432")
     logging.basicConfig(level=logging.DEBUG)
 
 @app.get("/")

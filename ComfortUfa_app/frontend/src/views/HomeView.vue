@@ -142,12 +142,10 @@ export default {
   async mounted() {
     await this.fetchStats()
     
-    // 👇 Слушаем событие обновления статистики
     window.addEventListener('stats-refresh', this.fetchStats)
   },
   
   beforeUnmount() {
-    // 👇 Очищаем слушатель при уходе со страницы
     window.removeEventListener('stats-refresh', this.fetchStats)
   },
 
@@ -163,10 +161,10 @@ export default {
           solved: response.data.total_problems,
           users: response.data.total_users
         }
-        console.log('✅ Статистика обновлена:', this.stats)
+        console.log('Статистика обновлена:', this.stats)
       }
       catch (error) {
-        console.error('❌ Ошибка:', error)
+        console.error('Ошибка:', error)
         this.statsError = 'Не удалось загрузить статистику'
       }
       finally {

@@ -281,7 +281,6 @@ export default {
       }
     },
     
-    // 👇 Загрузка статистики активности
     async fetchActivity() {
       try {
         this.loadingActivity = true
@@ -334,7 +333,6 @@ export default {
       else if (this.form.nickname.length < 3) {
         this.errors.nickname = 'Минимум 3 символа'
       } 
-      // 👇 НОВАЯ ПРОВЕРКА: только буквы (кириллица/латиница) и цифры
       else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
         this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
       }
@@ -353,7 +351,6 @@ export default {
       return Object.keys(this.errors).length === 0
     },
     
-    // 👇 Сохранение изменений
     async saveProfile() {
       if (!this.validateForm()) {
         this.$toast?.add({
@@ -454,7 +451,6 @@ export default {
       }
     },
     
-    // 👇 Выход из системы
     handleLogout() {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('user')

@@ -1,6 +1,10 @@
 // src/composables/useGeolocation.js
 import { ref, shallowRef } from 'vue'
 
+// 🔥 ФИКСИРОВАННЫЕ КООРДИНАТЫ (заглушка)
+const FALLBACK_COORDS = [54.728259, 55.969300] // Уфа, центр
+const FALLBACK_ADDRESS = 'г. Уфа, Кирова 65'
+
 export function useGeolocation() {
   const loading = ref(false)
   const error = ref(null)
@@ -42,12 +46,13 @@ export function useGeolocation() {
     const {
       zoom = 18,
       enableHighAccuracy = true,
-      timeout = 15000,
+      timeout = 10000, // 🔥 Уменьшили таймаут до 10 сек
       maximumAge = 0,
       onPositionReceived = null,
       ymaps = null,
       mapInstance = null,
       createMarkerFn = null,
+      useFallback = true, // 🔥 Использовать заглушку если не получилось
     } = options
 
     if (loading.value) {
@@ -69,15 +74,31 @@ export function useGeolocation() {
     currentMapInstance.value = mapInstance
 
     if (!navigator.geolocation) {
+      console.warn('[Geo] Геолокация не поддерживается браузером')
+      if (useFallback) {
+        return await useFallbackCoords({ zoom, mapInstance, ymaps, createMarkerFn })
+      }
       error.value = 'Геолокация не поддерживается браузером'
       loading.value = false
-      console.error('[Geo] Геолокация не поддерживается')
       return null
     }
 
+    // 🔥 Пробуем получить реальную геолокацию
     return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        console.warn('[Geo] Тайм-аут геолокации, используем заглушку')
+        if (useFallback) {
+          useFallbackCoords({ zoom, mapInstance, ymaps, createMarkerFn }).then(resolve)
+        } else {
+          error.value = 'Превышено время ожидания'
+          loading.value = false
+          resolve(null)
+        }
+      }, timeout)
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          clearTimeout(timeoutId)
           console.log('[Geo] Позиция получена:', position.coords)
           const { latitude: lat, longitude: lon, accuracy } = position.coords
           const coords = [lat, lon]
@@ -100,9 +121,7 @@ export function useGeolocation() {
           if (newMarker) {
             userMarker.value = newMarker
             mapInstance.geoObjects.add(newMarker)
-            console.log('[GeoMarker] Маркер добавлен на карту, geoObjects count:', mapInstance.geoObjects.getLength())
-          } else {
-            console.error('[GeoMarker] Не удалось создать маркер')
+            console.log('[GeoMarker] Маркер добавлен на карту')
           }
 
           const accText = accuracy < 100 ? `±${Math.round(accuracy)}м` : 'приблизительно'
@@ -114,22 +133,73 @@ export function useGeolocation() {
           }
 
           loading.value = false
-          resolve({ coords, accuracy })
+          resolve({ coords, accuracy, isFallback: false })
         },
-        (err) => {
+        async (err) => {
+          clearTimeout(timeoutId)
           const errors = {
             1: 'Доступ запрещён',
             2: 'Позиция недоступна',
             3: 'Тайм-аут запроса'
           }
-          error.value = `Геолокация: ${errors[err.code] || 'Ошибка'}`
-          console.error('[Geo] Ошибка геолокации:', error.value, err)
-          loading.value = false
-          resolve(null)
+          
+          console.warn('[Geo] Ошибка геолокации:', errors[err.code])
+          
+          // 🔥 Если не получилось и включена заглушка
+          if (useFallback) {
+            console.log('[Geo] Используем фиксированные координаты')
+            const result = await useFallbackCoords({ zoom, mapInstance, ymaps, createMarkerFn })
+            resolve(result)
+          } else {
+            error.value = `Геолокация: ${errors[err.code] || 'Ошибка'}`
+            loading.value = false
+            resolve(null)
+          }
         },
-        { enableHighAccuracy, timeout, maximumAge }
+        { enableHighAccuracy, timeout: 20000, maximumAge } // 🔥 Увеличили таймаут для браузера
       )
     })
+  }
+
+  // 🔥 Функция использования заглушки
+  const useFallbackCoords = async ({ zoom, mapInstance, ymaps, createMarkerFn }) => {
+    console.log('[Geo] 🔧 Используем заглушку:', FALLBACK_COORDS)
+    
+    userPosition.value = { 
+      lat: FALLBACK_COORDS[0], 
+      lon: FALLBACK_COORDS[1], 
+      accuracy: null 
+    }
+
+    // Перемещаем карту
+    mapInstance.setCenter(FALLBACK_COORDS, zoom, {
+      flying: true,
+      duration: 600
+    })
+
+    // Удаляем старый маркер
+    removeUserMarker(mapInstance)
+
+    // Создаём маркер
+    const markerCreator = createMarkerFn || createDefaultUserMarker
+    const newMarker = markerCreator(FALLBACK_COORDS, ymaps)
+    
+    if (newMarker) {
+      userMarker.value = newMarker
+      mapInstance.geoObjects.add(newMarker)
+      console.log('[GeoMarker] Маркер-заглушка добавлен')
+    }
+
+    success.value = `Показываем примерное местоположение: ${FALLBACK_ADDRESS}`
+    console.log('[Geo] Заглушка активирована')
+
+    loading.value = false
+    
+    return { 
+      coords: FALLBACK_COORDS, 
+      accuracy: null, 
+      isFallback: true 
+    }
   }
 
   const clearMessages = () => {

@@ -89,7 +89,6 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 async def login(form_data: UserLogin, db: Session = Depends(get_db)):
     """Вход пользователя и получение токена"""
     
-    # 🔍 Ищем пользователя по email + получаем роль
     query = text("""
         SELECT u.id_user, u.email, u.nickname, u.password_hash, u.id_role, r.name_role
         FROM users u
@@ -105,7 +104,6 @@ async def login(form_data: UserLogin, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # 🎫 Создаём JWT-токен
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user.id_user)},
@@ -123,7 +121,7 @@ async def login(form_data: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(
-    current_user: User = Depends(get_current_active_user),  # 👈 Теперь работает!
+    current_user: User = Depends(get_current_active_user),  
     db: Session = Depends(get_db)
 ):
     """Получение информации о текущем пользователе (защищённый маршрут)"""
