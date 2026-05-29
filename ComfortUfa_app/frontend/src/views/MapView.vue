@@ -3,6 +3,7 @@
   <div class="map-page">
     <!-- ===== ЛЕВЫЙ ПЛАВАЮЩИЙ САЙДБАР ===== -->
     <div class="sidebar">
+      <!-- 🔍 Поиск по названию/адресу -->
       <div class="sidebar-section">
         <label class="sidebar-label">Поиск</label>
         <AutoComplete 
@@ -145,6 +146,17 @@
         </button>
       </div>
 
+      <!-- Кнопка рекомендаций (справа сверху) -->
+      <button 
+        v-if="isAuthenticated"
+        class="recommendations-toggle-btn" 
+        :class="{ active: showRecommendationsPanel }"
+        @click="toggleRecommendationsPanel"
+        title="Рекомендации для вас"
+      >
+        <i class="pi pi-sparkles"></i>
+      </button>
+
       <button class="geo-btn" @click="goToMyLocation" :disabled="loading" title="Моё местоположение">
         <i class="pi pi-send"></i>
       </button>
@@ -160,6 +172,64 @@
         <i class="pi" :class="isAddingMode ? 'pi-times' : 'pi-plus'"></i>
       </button>
     </div>
+
+    <!-- ВЫДВИЖНАЯ ПАНЕЛЬ РЕКОМЕНДАЦИЙ -->
+    <Transition name="slide-fade">
+      <div v-if="showRecommendationsPanel && isAuthenticated" class="recommendations-panel">
+        <div class="panel-header">
+          <h3>Рекомендации</h3>
+          <button class="panel-close" @click="showRecommendationsPanel = false">
+            <i class="pi pi-times"></i>
+          </button>
+        </div>
+        
+        <div class="panel-body">
+          <!-- Загрузка -->
+          <div v-if="recommendationsLoading" class="panel-loading">
+            <i class="pi pi-spin pi-spinner"></i>
+            <span>Подбираем объекты...</span>
+          </div>
+          
+          <!-- Пусто -->
+          <div v-else-if="recommendations.length === 0" class="panel-empty">
+            <i class="pi pi-info-circle"></i>
+            <p>Добавьте объекты в избранное или оставьте отзывы, чтобы мы могли порекомендовать что-то интересное!</p>
+          </div>
+          
+          <!-- Список рекомендаций -->
+          <div v-else class="recommendations-scroll">
+            <div 
+              v-for="obj in recommendations" 
+              :key="obj.id_object"
+              class="recommendation-card"
+              @click="navigateToRecommendation(obj)"
+            >
+              <div class="card-icon">
+                <i :class="getCategoryIcon(obj.type_name)"></i>
+              </div>
+              <div class="card-content">
+                <div class="card-type">{{ obj.type_name }}</div>
+                <h4 class="card-name">{{ obj.name }}</h4>
+                <div class="card-meta">
+                  <span v-if="obj.rating_avg" class="card-rating">
+                    <i class="pi pi-star-fill"></i> {{ obj.rating_avg.toFixed(1) }}
+                  </span>
+                  <span class="card-address">{{ obj.address || 'Адрес не указан' }}</span>
+                </div>
+              </div>
+              <i class="pi pi-chevron-right card-arrow"></i>
+            </div>
+          </div>
+        </div>
+        
+        <div class="panel-footer">
+          <button class="refresh-btn" @click="loadRecommendations" :disabled="recommendationsLoading">
+            <i class="pi pi-refresh"></i>
+            Обновить
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Подсказка при добавлении -->
     <Transition name="fade-slide">
@@ -293,6 +363,11 @@ const {
 
 const bookmarkedObjects = ref(new Set())
 
+// 🔥 ПЕРЕМЕННЫЕ ДЛЯ РЕКОМЕНДАЦИЙ
+const recommendations = ref([])
+const showRecommendationsPanel = ref(false)
+const recommendationsLoading = ref(false)
+
 const objectTypeOptions = [
   // 🔹 Оригинальные 8 типов
   { label: 'Камера видеонаблюдения', value: 'Камера видеонаблюдения' },
@@ -316,6 +391,7 @@ const objectTypeOptions = [
   { label: 'Ограждение', value: 'Ограждение' }
 ]
 
+// 🔥 ПЕРЕМЕННЫЕ ДЛЯ МОДАЛКИ
 const modalVisible = ref(false)
 const modalObject = ref(null)
 
@@ -454,14 +530,12 @@ const goToMyLocation = async () => {
       mapInstance: map, 
       createMarkerFn: createCustomUserMarker, 
       onPositionReceived: ({ coords }) => console.log(`[Geo] Позиция получена:`, coords),
-      useFallback: true, // 🔥 ВКЛЮЧИТЬ ЗАГЛУШКУ
-      timeout: 10000 // 🔥 Ждать 10 секунд
+      useFallback: true,
+      timeout: 10000
     })
     
-    // Проверяем, была ли заглушка
     if (result?.isFallback) {
       console.log('Использована заглушка')
-      // Можно показать уведомление, что это не точное местоположение
     }
     
     syncGeoState()
@@ -572,6 +646,102 @@ const navigateToObject = async (obj) => {
   }
 }
 
+// 🔥 НАВИГАЦИЯ К ОБЪЕКТУ ИЗ РЕКОМЕНДАЦИЙ
+// 🔥 НАВИГАЦИЯ К ОБЪЕКТУ ИЗ РЕКОМЕНДАЦИЙ (открывает балун)
+const navigateToRecommendation = async (obj) => {
+  if (!map || !obj.coords) return
+  
+  // 1. Центрируем карту на объекте
+  await map.setCenter(obj.coords, 16, { duration: 500, flying: true })
+  
+  // 2. Ждём пока карта переместится
+  await new Promise(resolve => setTimeout(resolve, 600))
+  
+  // 3. Пробуем найти существующий маркер
+  let targetPlacemark = null
+  
+  // Ищем в кластеризаторе
+  if (clusterer?.getGeoObjects) {
+    const placemarks = clusterer.getGeoObjects()
+    targetPlacemark = placemarks.find(p => 
+      Number(p.options?.get('objectId')) === Number(obj.id_object)
+    )
+  }
+  
+  // Если не нашли в кластере, проверяем активный маркер
+  if (!targetPlacemark && activePlacemark && 
+      Number(activePlacemark.options?.get('objectId')) === Number(obj.id_object)) {
+    targetPlacemark = activePlacemark
+  }
+  
+  // 4. Если нашли маркер - открываем балун
+  if (targetPlacemark?.balloon) {
+    // Если балун уже открыт - закрываем и открываем заново
+    if (targetPlacemark.balloon.isOpen()) {
+      targetPlacemark.balloon.close()
+    }
+    
+    // Обновляем контент балуна актуальными данными
+    const updatedContent = createBalloonContent(
+      { ...obj, rating: obj.rating_avg, ratingCount: obj.rating_count },
+      0,
+      obj.type_name,
+      {
+        isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)),
+        iconClass: getCategoryIcon(obj.type_name)
+      }
+    )
+    targetPlacemark.properties.set('balloonContent', updatedContent)
+    
+    // Открываем балун
+    targetPlacemark.balloon.open()
+    
+    setSuccess(`${obj.name}`)
+    return
+  }
+  
+  // 5. Если маркер не найден - создаём временный для показа
+  const tempPlacemark = new window.ymaps.Placemark(
+    obj.coords,
+    {
+      balloonContent: createBalloonContent(
+        { ...obj, rating: obj.rating_avg, ratingCount: obj.rating_count },
+        0,
+        obj.type_name,
+        {
+          isBookmarked: bookmarkedObjects.value.has(Number(obj.id_object)),
+          iconClass: getCategoryIcon(obj.type_name)
+        }
+      ),
+      hintContent: obj.name
+    },
+    {
+      preset: markerConfig[obj.type_name]?.preset || 'islands#grayCircleIcon',
+      objectId: obj.id_object,
+      objectType: obj.type_name,
+      isOurObject: true,
+      zIndex: 10000
+    }
+  )
+  
+  // Добавляем на карту и открываем балун
+  map.geoObjects.add(tempPlacemark)
+  tempPlacemark.balloon.open()
+  
+  // Сохраняем ссылку чтобы потом можно было удалить
+  activePlacemark = tempPlacemark
+  
+  // Автоудаление временного маркера при закрытии балуна
+  tempPlacemark.events.add('balloonclose', () => {
+    if (map?.geoObjects && activePlacemark === tempPlacemark) {
+      map.geoObjects.remove(tempPlacemark)
+      activePlacemark = null
+    }
+  }, { once: true })
+  
+  setSuccess(`${obj.name}`)
+}
+
 const {
   searchQuery,
   searchResults,
@@ -579,6 +749,35 @@ const {
   handleSearchKeydown,
   onCategorySelect
 } = useSearch({ api, navigateToObject, setError })
+
+// 🔥 ЗАГРУЗКА РЕКОМЕНДАЦИЙ
+const loadRecommendations = async () => {
+  if (!isAuthenticated.value) return
+  
+  recommendationsLoading.value = true
+  
+  try {
+    const user = JSON.parse(localStorage.getItem('user'))
+    if (!user?.id) return
+    
+    const response = await api.get(`/api/recommendations/${user.id}?limit=10`)
+    recommendations.value = response.data
+    console.log('[Recommendations] Loaded:', recommendations.value.length, 'items')
+  } catch (err) {
+    console.error('[Recommendations] Error:', err)
+    setError('Не удалось загрузить рекомендации')
+  } finally {
+    recommendationsLoading.value = false
+  }
+}
+
+// 🔥 ПЕРЕКЛЮЧЕНИЕ ПАНЕЛИ
+const toggleRecommendationsPanel = () => {
+  showRecommendationsPanel.value = !showRecommendationsPanel.value
+  if (showRecommendationsPanel.value && recommendations.value.length === 0) {
+    loadRecommendations()
+  }
+}
 
 const initMap = () => new Promise((resolve, reject) => {
 
@@ -791,6 +990,10 @@ const onReviewSubmitted = (data) => {
   if (selectedCategory.value) {
     loadObjects(selectedCategory.value)
   }
+  // 🔥 Обновляем рекомендации после отзыва
+  if (showRecommendationsPanel.value) {
+    loadRecommendations()
+  }
 }
 
 const onGoToMap = (object) => {
@@ -891,8 +1094,6 @@ const createNewObjectPlacemark = (obj) => new window.ymaps.Placemark(obj.coords,
 
 const { isAddingMode, showAddConfirm, showObjectModal, pendingObjectCoords, pendingAddress, confirmPosition, isGeocoding, toggleAddMode, handleMapClick, cancelAddObject, confirmAddObject, submitNewObject, resetAfterSubmit, cleanup: cleanupAddMode } = useAddObjectMode(toRef(() => map), mapContainer, (msg, duration) => setError(msg, duration), (msg, duration) => setSuccess(msg, duration), createNewObjectPlacemark, (endpoint, data) => api.post(endpoint, data))
 
-// В <script setup> MapView.vue, найдите handleObjectSubmit и замените на:
-
 const handleObjectSubmit = async (payload) => {
   loading.value = true
   
@@ -910,11 +1111,15 @@ const handleObjectSubmit = async (payload) => {
     
     selectedCategory.value = payload.type || payload.type_name
     
+    // 🔥 Обновляем рекомендации после добавления объекта
+    if (showRecommendationsPanel.value) {
+      loadRecommendations()
+    }
+    
   } catch (err) {
     console.error('[ObjectSubmit] Ошибка:', err)
     
     if (err.message === 'duplicate_object') {
-      // Ошибка дубликата уже показана в submitNewObject
       return
     }
     
@@ -979,8 +1184,11 @@ onMounted(async () => {
     isAuthenticated.value = event.detail.isAuthenticated
     if (event.detail.isAuthenticated) {
       loadUserFavorites()
+      // 🔥 Загружаем рекомендации при авторизации (но не показываем панель)
     } else {
       bookmarkedObjects.value.clear()
+      recommendations.value = []
+      showRecommendationsPanel.value = false
     }
   }
   
@@ -1044,9 +1252,7 @@ const selectCategory = (cat) => {
 
 let navigationHandled = false
 
-// Функция попытки навигации
 const tryNavigateFromQuery = (query) => {
-  // Проверка готовности карты
   if (!isMapInitialized.value || !map) {
     console.log('[MapView] Map not ready yet, skipping navigation')
     return
@@ -1062,7 +1268,7 @@ const tryNavigateFromQuery = (query) => {
   const zoom = query.zoom ? parseInt(query.zoom) : 16
   
   console.log('[MapView] Attempting navigation to object:', objectId)
-  navigationHandled = true // Ставим флаг
+  navigationHandled = true
   
   if (query.name && query.type) {
     const obj = {
@@ -1187,7 +1393,6 @@ watch(
   max-height: 300px;
 }
 
-/* Стилизация скролла для категорий */
 .categories-list::-webkit-scrollbar { 
   width: 6px; 
 }
@@ -1207,7 +1412,6 @@ watch(
   background: rgba(22, 143, 4, 0.6); 
 }
 
-/* Для Firefox */
 .categories-list {
   scrollbar-width: thin;
   scrollbar-color: rgba(22, 143, 4, 0.4) rgba(22, 143, 4, 0.05);
@@ -1331,8 +1535,34 @@ watch(
   color: #94a3b8;
 }
 
-.info-panel { position: absolute; left: 340px; bottom: 4px; z-index: 15; background: rgb(255, 255, 255); backdrop-filter: blur(20px); color: #1a1a1a; padding: 8px 13px; border-radius: 16px; font-size: 13px; font-weight: 600; border: 1px solid rgba(18, 131, 0, 0.447); display: flex; align-items: center; gap: 5px;}
-.category-badge { background: rgba(22,143,4,0.12); color: #168f04; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.info-panel { 
+  position: absolute; 
+  left: 340px; 
+  bottom: 4px; 
+  z-index: 15; 
+  background: rgb(255, 255, 255); 
+  backdrop-filter: blur(20px); 
+  color: #1a1a1a; 
+  padding: 8px 13px; 
+  border-radius: 16px; 
+  font-size: 13px; 
+  font-weight: 600; 
+  border: 1px solid rgba(18, 131, 0, 0.447); 
+  display: flex; 
+  align-items: center; 
+  gap: 5px;
+}
+
+.category-badge { 
+  background: rgba(22,143,4,0.12); 
+  color: #168f04; 
+  padding: 4px 10px; 
+  border-radius: 20px; 
+  font-size: 11px; 
+  font-weight: 700; 
+  text-transform: uppercase; 
+}
+
 .filters-badge { 
   background: rgba(59, 130, 246, 0.15); 
   color: #2563eb; 
@@ -1343,12 +1573,58 @@ watch(
   text-transform: uppercase; 
   margin-left: 4px;
 }
-.map-controls-right { position: absolute; top: 330px; right: 10px; z-index: 20; display: flex; flex-direction: column; gap: 12px; pointer-events: none; align-items: center; }
+
+.map-controls-right { 
+  position: absolute; 
+  top: 330px; 
+  right: 10px; 
+  z-index: 20; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; 
+  pointer-events: none; 
+  align-items: center; 
+}
 .map-controls-right * { pointer-events: auto; }
 .layer-switcher { display: flex; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); padding: 7px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(22,143,4,0.15); }
 .layer-btn { width: 40px; height: 40px; border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; color: #64748b; cursor: pointer; transition: all 0.5s; display: flex; align-items: center; justify-content: center; }
 .layer-btn:hover { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; }
 .layer-btn.active { background: linear-gradient(135deg, #168f04, #007306); border-color: #168f04; color: #fff; box-shadow: 0 6px 20px rgba(22,143,4,0.35); }
+
+/* 🔥 КНОПКА РЕКОМЕНДАЦИЙ */
+.recommendations-toggle-btn {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border: 2px solid #e2e8f0;
+  background: linear-gradient(135deg, #d668f1, #743390);
+  color: white;
+  font-size: 18px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.9s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recommendations-toggle-btn .badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+}
+
 .geo-btn { width: 43px; height: 43px; border: 2px solid #e2e8f0; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); color: #64748b; font-size: 18px; border-radius: 12px; cursor: pointer; transition: all 0.9s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
 .geo-btn:hover:not(:disabled) { border-color: #168f04; background: rgba(22,143,4,0.08); color: #168f04; box-shadow: 0 8px 24px rgba(22,143,4,0.25); }
 .geo-btn:active:not(:disabled) { transform: scale(0.96); }
@@ -1378,6 +1654,257 @@ watch(
 .add-object-btn.active:hover {
   box-shadow: 0 8px 24px rgba(220,38,38,0.45);
 }
+
+/* 🔥 ВЫДВИЖНАЯ ПАНЕЛЬ РЕКОМЕНДАЦИЙ */
+.recommendations-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 340px;
+  max-height: calc(100vh - 100px);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #d668f1, #743390);
+  color: white;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.panel-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.panel-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-loading,
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #64748b;
+  gap: 12px;
+}
+
+.panel-loading i {
+  font-size: 32px;
+  color: #8b5cf6;
+}
+
+.panel-empty i {
+  font-size: 40px;
+  color: #cbd5e1;
+}
+
+.panel-empty p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.recommendations-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recommendation-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.9s;
+}
+
+.recommendation-card:hover {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.08);
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+}
+
+.card-icon {
+  width: 40px;
+  height: 40px;
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-icon i {
+  font-size: 18px;
+  color: #8b5cf6;
+}
+
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-type {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8b5cf6;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.card-rating i {
+  font-size: 10px;
+}
+
+.card-address {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-arrow {
+  color: #cbd5e1;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: all 0.9s;
+}
+
+.recommendation-card:hover .card-arrow {
+  color: #e45cf6;
+}
+
+.panel-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.refresh-btn {
+  width: 100%;
+  padding: 10px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
+  color: #933183;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.9s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: rgba(246, 92, 236, 0.2);
+  border-color: #ee5cf6;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Анимация появления панели */
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateX(40px);
+}
+
 .add-mode-hint {
   position: absolute;
   top: 20px;
@@ -1477,9 +2004,33 @@ watch(
   .sidebar { width: 260px; left: 12px; top: 12px; bottom: 90px; }
   .info-panel { left: 12px; bottom: 12px; flex-wrap: wrap; gap: 8px; }
   .map-controls-right { top: 12px; right: 12px; gap: 10px; }
-  .layer-btn, .geo-btn, .add-object-btn { width: 44px; height: 44px; }
+  .layer-btn, .geo-btn, .add-object-btn, .recommendations-toggle-btn { width: 44px; height: 44px; }
   .add-confirm-popup { left: 50% !important; transform: translateX(-50%) !important; top: 50% !important; }
   .filters-list { max-height: 150px; }
+  
+  .recommendations-panel {
+    width: calc(100vw - 40px);
+    max-height: calc(100vh - 120px);
+    top: 60px;
+    right: 10px;
+  }
 }
 .categories-section { flex: 1; display: flex; flex-direction: column; }
+
+/* Скроллбар для панели рекомендаций */
+.recommendations-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.recommendations-scroll::-webkit-scrollbar-track {
+  background: rgba(139, 92, 246, 0.05);
+  border-radius: 4px;
+}
+.recommendations-scroll::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.4);
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+.recommendations-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.6);
+}
 </style>

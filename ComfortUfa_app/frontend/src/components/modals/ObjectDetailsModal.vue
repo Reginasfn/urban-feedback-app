@@ -285,7 +285,8 @@ const toast = useToast()
 
 const props = defineProps({
   object: { type: Object, default: null },
-  visible: { type: Boolean, default: false }
+  visible: { type: Boolean, default: false },
+  reviewToEdit: { type: Object, default: null } 
 })
 
 const emit = defineEmits([
@@ -293,6 +294,7 @@ const emit = defineEmits([
   'close', 
   'go-to-map', 
   'review-submitted',
+  'review-updated',  // ← добавь это
   'object-updated'
 ])
 
@@ -337,7 +339,18 @@ const canSubmitReview = computed(() =>
 )
 
 const openReviewForm = () => {
-  reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+  if (props.reviewToEdit) {
+    // Редактирование: предзаполняем форму
+    reviewForm.value = {
+      category: props.reviewToEdit.category || props.reviewToEdit.category_value,
+      rating: props.reviewToEdit.rating || 0,
+      text: props.reviewToEdit.text || '',
+      photos: []
+    }
+  } else {
+    // Новый отзыв: пустая форма
+    reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+  }
   showReviewForm.value = true
 }
 
@@ -386,7 +399,7 @@ const loadReviews = async () => {
 
   try {
     const response = await api.get(
-      `/reviews/object/${props.object.id_object}`,
+      `/api/reviews/object/${props.object.id_object}`,
       {
         params: { limit: 50, offset: 0 }
       }
@@ -462,58 +475,107 @@ const refreshObjectData = async () => {
 }
 
 // Отправка отзыва с обработкой модерации
+// Отправка отзыва с обработкой модерации
 const submitReview = async () => {
   if (!props.object?.id_object) return
   submittingReview.value = true
   
   try {
-    const token = localStorage.getItem('auth_token') || 
-                  sessionStorage.getItem('auth_token') || ''
+    const token = localStorage.getItem('auth_token') || ''
     
-    const formData = new FormData()
-    formData.append('id_object', props.object.id_object)
-    formData.append('category', reviewForm.value.category)
-    formData.append('rating', reviewForm.value.rating)
-    formData.append('text', reviewForm.value.text.trim())
-    
-    if (reviewForm.value.photos?.length) {
-      reviewForm.value.photos.forEach((photo) => {
-        formData.append('photo', photo.file)
+    if (props.reviewToEdit?.id_review) {
+      // 🔥 ОБНОВЛЕНИЕ существующего отзыва (PUT)
+      const formData = new FormData()
+      formData.append('category', reviewForm.value.category)
+      formData.append('rating', reviewForm.value.rating)
+      formData.append('text', reviewForm.value.text.trim())
+      
+      if (reviewForm.value.photos?.length) {
+        reviewForm.value.photos.forEach((photo) => {
+          formData.append('photo', photo.file)
+        })
+      }
+      
+      const response = await api.put(
+        `/reviews/${props.reviewToEdit.id_review}`, 
+        formData, 
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      )
+      
+      reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+      showReviewForm.value = false
+      
+      await loadReviews()
+      await refreshObjectData()
+      
+      emit('review-updated', { 
+        success: true, 
+        id_review: props.reviewToEdit.id_review,
+        ...response.data 
+      })
+      
+      toast.add({
+        severity: 'success',
+        summary: 'Обновлено!',
+        detail: 'Отзыв успешно изменён',
+        life: 3000,
+        styleClass: 'my-success-toast'
+      })
+      
+    } else {
+      // 🔥 СОЗДАНИЕ нового отзыва (POST) — ИСПРАВЛЕНО
+      const formData = new FormData()
+      formData.append('id_object', props.object.id_object)
+      formData.append('category', reviewForm.value.category)
+      formData.append('rating', reviewForm.value.rating)
+      formData.append('text', reviewForm.value.text.trim())
+      
+      if (reviewForm.value.photos?.length) {
+        reviewForm.value.photos.forEach((photo) => {
+          formData.append('photo', photo.file)
+        })
+      }
+      
+      const response = await api.post('/api/reviews/', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+
+      // Очистка формы
+      reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+      showReviewForm.value = false
+      
+      // Перезагрузка данных
+      await loadReviews()
+      await refreshObjectData()
+      
+      // Уведомление родителя
+      emit('review-submitted', { success: true, ...response.data })
+      
+      // Тост с твоим стилем
+      toast.add({
+        severity: 'success',
+        summary: 'Успешно!',
+        detail: 'Отзыв опубликован',
+        life: 3000,
+        styleClass: 'my-success-toast'
       })
     }
     
-    const response = await api.post('/reviews/', formData, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-
-    const result = response.data
-    
-    // Успешная отправка
-    reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
-    showReviewForm.value = false
-    
-    await loadReviews()
-    await refreshObjectData()
-    
-    emit('review-submitted', { success: true, ...result })
-    
-    toast.add({
-      severity: 'success',
-      summary: 'Успешно!',
-      detail: 'Отзыв опубликован',
-      life: 3000,
-      styleClass: 'my-big-toast'
-    })
-    
   } catch (error) {
+    console.error('[SubmitReview] Error:', error)
+    
     // Обработка ошибок модерации
     const moderationError = error.response?.data?.detail
     
     if (moderationError?.moderation_failed) {
-      // Отзыв отклонён модерацией
       toast.add({
         severity: 'warn',
         summary: 'Отзыв не прошёл проверку',
@@ -533,17 +595,42 @@ const submitReview = async () => {
       toast.add({
         severity: 'error',
         summary: 'Ошибка',
-        detail: error.message || 'Не удалось отправить отзыв',
+        detail: error.response?.data?.detail || error.message || 'Не удалось отправить отзыв',
         life: 4000,
         styleClass: 'my-error-toast'
       })
     }
     
     emit('review-submitted', { success: false, error: error.message })
+    
   } finally {
     submittingReview.value = false
   }
 }
+
+// 🔥 Следим за изменением reviewToEdit и автоматически открываем форму редактирования
+watch(
+  () => props.reviewToEdit,
+  (newReview) => {
+    if (newReview) {
+      console.log('🔥 reviewToEdit changed:', newReview)
+      
+      // Предзаполняем форму
+      reviewForm.value = {
+        category: newReview.category || newReview.category_value,
+        rating: newReview.rating || 0,
+        text: newReview.text || '',
+        photos: []
+      }
+      
+      // Показываем форму
+      showReviewForm.value = true
+      
+      console.log('✅ Форма открыта, reviewForm:', reviewForm.value)
+    }
+  },
+  { immediate: false }
+)
 
 const onGoToMap = () => {
   emit('go-to-map', props.object)

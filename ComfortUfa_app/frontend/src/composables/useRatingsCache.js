@@ -28,7 +28,7 @@ export function useRatingsCache(ttl = DEFAULT_TTL) {
     if (cached !== null) return cached
 
     try {
-      const response = await api.get(`/reviews/object/${objectId}`, {
+      const response = await api.get(`/api/reviews/object/${objectId}`, {
         params: { limit: 100 }
       })
       

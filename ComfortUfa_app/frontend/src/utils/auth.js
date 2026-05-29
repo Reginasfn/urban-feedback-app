@@ -1,4 +1,4 @@
-// utils/auth.js
+// C:\Users\Регина\Desktop\repositories\urban-feedback-app\ComfortUfa_app\frontend\src\utils\auth.js
 
 /**
  * Проверяет, авторизован ли пользователь

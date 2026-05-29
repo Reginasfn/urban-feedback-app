@@ -8,7 +8,7 @@ from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -91,3 +91,37 @@ async def get_current_user(
 def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     """Доп. проверка: пользователь должен существовать"""
     return current_user
+
+async def get_optional_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Возвращает пользователя или None. Не блокирует доступ без токена."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+        
+    token = authorization.split(" ")[-1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: int = payload.get("sub")
+        if user_id is None:
+            return None
+            
+        query = text("SELECT * FROM users WHERE id_user = :user_id")
+        user = db.execute(query, {"user_id": user_id}).first()
+        
+        if user:
+            return User(
+                id_user=user.id_user,
+                email=user.email,
+                password_hash=user.password_hash,
+                nickname=user.nickname,
+                phone=user.phone,
+                id_role=user.id_role,
+                created_at=user.created_at
+            )
+    except JWTError:
+        pass
+    except Exception:
+        pass
+    return None

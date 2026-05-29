@@ -6,7 +6,13 @@ import router from './router'
 // ===== PRIMEVUE CORE =====
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
-import Aura from '@primeuix/themes/aura'
+
+// ===== ИКОНКИ (единственный ручной импорт стилей) =====
+import 'primeicons/primeicons.css'
+
+// ===== ТЕМА =====
+import Aura from '@primevue/themes/aura'
+// Если не работает, попробуй: import Aura from '@primeuix/themes/aura'
 
 // ===== PRIMEVUE COMPONENTS =====
 import Button from 'primevue/button'
@@ -17,6 +23,13 @@ import Avatar from 'primevue/avatar'
 import IftaLabel from 'primevue/iftalabel'
 import Dialog from 'primevue/dialog'
 import Textarea from 'primevue/textarea'
+import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
+import Password from 'primevue/password'
+import Tag from 'primevue/tag'
+import Divider from 'primevue/divider'
+import TabView from 'primevue/tabview'
+import TabPanel from 'primevue/tabpanel'
 
 // ===== ГЛОБАЛЬНЫЕ СТИЛИ =====
 import './styles/toasts.css'
@@ -26,19 +39,15 @@ export const modalState = {
   visible: ref(false),
   currentObject: shallowRef(null),
   
-  // Открыть модалку с загрузкой данных
   async open(objectId) {
     try {
-      // Загружаем полные данные объекта (замените URL на ваш API)
       const response = await fetch(`/api/objects/${objectId}`)
       if (!response.ok) throw new Error('Failed to fetch')
       const data = await response.json()
-      
       this.currentObject.value = data
       this.visible.value = true
     } catch (err) {
       console.error('[Modal] Error loading object:', err)
-      // Показываем заглушку с минимальными данными
       this.currentObject.value = { 
         id_object: objectId, 
         name: 'Объект #' + objectId, 
@@ -49,17 +58,14 @@ export const modalState = {
     }
   },
   
-  // Закрыть модалку
   close() {
     this.visible.value = false
-    // Не очищаем currentObject сразу — для плавной анимации закрытия
     setTimeout(() => {
       this.currentObject.value = null
     }, 300)
   }
 }
 
-// 🔥 Глобальный колбэк для balloonRenderer.js
 window.__openObjectDetails = (id) => {
   modalState.open(id)
 }
@@ -73,10 +79,7 @@ app.use(PrimeVue, {
     preset: Aura,
     options: {
       darkModeSelector: false,
-      cssLayer: {
-        name: 'primevue',
-        order: 'tailwind-base, primevue, tailwind-utilities'
-      }
+      // Убираем cssLayer — он может конфликтовать с Vite
     }
   }
 })
@@ -93,6 +96,13 @@ app.component('Avatar', Avatar)
 app.component('IftaLabel', IftaLabel)
 app.component('Dialog', Dialog)
 app.component('Textarea', Textarea)
+app.component('InputText', InputText)
+app.component('InputMask', InputMask)
+app.component('Password', Password)
+app.component('Tag', Tag)
+app.component('Divider', Divider)
+app.component('TabView', TabView)
+app.component('TabPanel', TabPanel)
 
 // ===== МОНТАЖ =====
 app.mount('#app')

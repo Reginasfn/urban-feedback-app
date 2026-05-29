@@ -12,7 +12,7 @@ from ..utils.auth import get_current_user
 # 🔥 Импорт сервиса модерации
 from ..services.moderation import moderator
 
-router = APIRouter(prefix="/reviews", tags=["Reviews"])
+router = APIRouter(prefix="/api/reviews", tags=["Reviews"])
 
 # ===== Модели =====
 class ReviewCreate(BaseModel):
@@ -230,3 +230,164 @@ async def get_object_reviews(object_id: int, limit: int = 10, offset: int = 0):
         if conn:
             cursor.close()
             conn.close()
+
+
+# ===== Удаление отзыва =====
+@router.delete("/{review_id}")
+async def delete_review(
+    review_id: int,
+    current_user = Depends(get_current_user)
+):
+    """Удалить отзыв (только автор может удалить свой отзыв)"""
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли отзыв и принадлежит ли он пользователю
+        cursor.execute("""
+            SELECT id_review, id_user, id_object 
+            FROM reviews 
+            WHERE id_review = %s
+        """, (review_id,))
+        
+        review = cursor.fetchone()
+        
+        if not review:
+            raise HTTPException(status_code=404, detail="Отзыв не найден")
+        
+        # Проверяем, что пользователь является автором отзыва
+        if review[1] != current_user.id_user:
+            raise HTTPException(
+                status_code=403, 
+                detail="У вас нет прав для удаления этого отзыва"
+            )
+        
+        id_object = review[2]
+        
+        # Удаляем связанные фотографии
+        cursor.execute("""
+            DELETE FROM photos WHERE review_id = %s
+        """, (review_id,))
+        
+        # Удаляем отзыв
+        cursor.execute("""
+            DELETE FROM reviews WHERE id_review = %s
+        """, (review_id,))
+        
+        conn.commit()
+        
+        # 🔥 УДАЛИЛ БЛОК ПЕРЕСЧЁТА РЕЙТИНГА (нет таких колонок в БД)
+        
+        return {
+            "success": True,
+            "message": "Отзыв успешно удалён"
+        }
+        
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"[DeleteReview] Ошибка: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера при удалении отзыва")
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+# ===== Обновление отзыва =====
+@router.put("/{review_id}", response_model=ReviewResponse)
+async def update_review(
+    review_id: int,
+    text: str = Form(..., min_length=10, max_length=500),
+    rating: int = Form(..., ge=1, le=5),
+    category: str = Form(...),
+    photo: Optional[UploadFile] = File(None),
+    current_user = Depends(get_current_user)
+):
+    """Обновить существующий отзыв (только автор)"""
+    
+    # 🔥 Проверка через модерацию
+    moderation_result = moderator.check_text(text)
+    if not moderation_result['is_approved']:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "moderation_failed": True,
+                "reasons": moderation_result['reasons'],
+                "message": "Отзыв не прошёл автоматическую проверку"
+            }
+        )
+    
+    if category not in CATEGORY_MAP:
+        raise HTTPException(status_code=400, detail="Неверная категория отзыва")
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Проверяем авторство
+        cursor.execute("SELECT id_user, id_object FROM reviews WHERE id_review = %s", (review_id,))
+        review = cursor.fetchone()
+        
+        if not review:
+            raise HTTPException(status_code=404, detail="Отзыв не найден")
+        
+        if review[0] != current_user.id_user:
+            raise HTTPException(status_code=403, detail="Нет прав для редактирования")
+        
+        id_object = review[1]
+        id_category_review = CATEGORY_MAP[category]
+        
+        # Обновляем отзыв
+        cursor.execute("""
+            UPDATE reviews 
+            SET text = %s, rating = %s, id_category_review = %s, updated_at = %s
+            WHERE id_review = %s
+            RETURNING id_review
+        """, (text.strip(), rating, id_category_review, datetime.now(), review_id))
+        
+        # Обработка фото (опционально)
+        if photo and photo.filename:
+            upload_dir = "resources/pic_obj"
+            os.makedirs(upload_dir, exist_ok=True)
+            import uuid
+            ext = os.path.splitext(photo.filename)[1]
+            filename = f"{uuid.uuid4().hex}{ext}"
+            photo_path = os.path.join(upload_dir, filename).replace("\\", "/")
+            
+            with open(photo_path, "wb") as f:
+                f.write(await photo.read())
+            
+            cursor.execute("""
+                INSERT INTO photos (review_id, file_path)
+                VALUES (%s, %s)
+            """, (review_id, photo_path))
+        
+        conn.commit()
+        
+        return ReviewResponse(
+            success=True,
+            message="Отзыв успешно обновлён",
+            id_review=review_id
+        )
+        
+    except HTTPException:
+        if conn: conn.rollback()
+        raise
+    except Exception as e:
+        if conn: conn.rollback()
+        print(f"[UpdateReview] Ошибка: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+
+            

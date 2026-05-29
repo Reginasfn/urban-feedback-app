@@ -1,18 +1,22 @@
+<!-- frontend\src\views\ProfileView.vue -->
+
 <template>
   <div class="profile-page">
     
-    <!-- Заголовок -->
+    <!-- Заголовок страницы -->
     <div class="profile-header">
       <div class="container">
         <h1 class="page-title">Личный профиль</h1>
       </div>
     </div>
 
-    <!-- Основное -->
+    <!-- Основное содержимое -->
     <div class="container">
+      
+      <!-- Верхняя секция: Профиль + Статистика -->
       <div class="profile-grid">
         
-        <!-- Карточка профиля -->
+        <!-- Карточка профиля (левая колонка) -->
         <Card class="profile-card">
           <template #title>
             <div class="card-title">
@@ -135,10 +139,10 @@
           </template>
         </Card>
 
-        <!-- Боковая панель справа: статистика и действия -->
-        <div class="profile-sidebar" style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Правая колонка: Статистика + Выход -->
+        <div class="profile-sidebar">
           
-          <!-- Статистика пользователя -->
+          <!-- Статистика пользователя (кликабельная) -->
           <Card class="stats-card">
             <template #title>
               <div class="card-title">
@@ -152,15 +156,15 @@
                 <span>Загрузка...</span>
               </div>
               <div v-else class="stats-grid">
-                <div class="stat-item">
+                <div class="stat-item clickable" @click="switchToTab(0)">
                   <span class="stat-value">{{ activity.total_reviews }}</span>
                   <span class="stat-label">Отзывов</span>
                 </div>
-                <div class="stat-item">
+                <div class="stat-item clickable" @click="goToFavorites">
                   <span class="stat-value">{{ activity.total_favorites }}</span>
                   <span class="stat-label">В избранном</span>
                 </div>
-                <div class="stat-item">
+                <div class="stat-item clickable" @click="switchToTab(1)">
                   <span class="stat-value">{{ activity.total_objects_added }}</span>
                   <span class="stat-label">Объектов добавлено</span>
                 </div>
@@ -182,7 +186,140 @@
 
         </div>
       </div>
+
+      <!-- ===== ВКЛАДКИ: ДЭШБОРД ПОЛЬЗОВАТЕЛЯ ===== -->
+      <div class="dashboard-section">
+        <TabView v-model:activeIndex="activeTabIndex" class="profile-tabs">
+          
+          <!-- 🔹 Вкладка: Мои отзывы -->
+          <TabPanel header="Мои отзывы">
+            <div v-if="loadingReviews" class="tab-loading">
+              <i class="pi pi-spin pi-spinner"></i> Загрузка отзывов...
+            </div>
+            
+            <div v-else-if="userReviews.length === 0" class="tab-empty">
+              <i class="pi pi-comment"></i>
+              <p>Пока нет оставленных отзывов</p>
+              <Button label="Оставить первый отзыв" @click="$router.push('/map')" severity="success" size="small" />
+            </div>
+            
+            <div v-else class="cards-grid">
+              <Card v-for="review in userReviews" :key="review.id_review" class="data-card review-card">
+                <template #content>
+                  <!-- КЛИКАБЕЛЬНЫЙ ОБЪЕКТ -->
+                  <div class="object-link-wrapper" @click="openObjectFromReview(review)">
+                    <div class="card-header">
+                      <div class="object-info">
+                        <div class="object-preview">
+                          <div class="object-icon-large">
+                            <i :class="getTypeIcon(review.type_name)"></i>
+                          </div>
+                          <div class="object-meta-info">
+                            <span class="object-type-badge">{{ review.type_name || 'Объект' }}</span>
+                            <h4 class="object-name">{{ review.object_name }}</h4>
+                            <p v-if="review.object_address" class="object-address">
+                              <i class="pi pi-map-marker"></i> {{ review.object_address }}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <Tag :value="review.category_name" 
+                           :severity="getCategorySeverity(review.category_name)" 
+                           size="small" 
+                           class="category-tag" />
+                    </div>
+                  </div>
+                  
+                  <!-- Текст отзыва -->
+                  <p class="card-text">{{ review.text }}</p>
+                  
+                  <!-- Рейтинг + дата -->
+                  <div class="card-meta">
+                    <span v-if="review.rating" class="rating-badge">
+                      <i class="pi pi-star-fill"></i> {{ review.rating }}/5
+                    </span>
+                    <span class="date"><i class="pi pi-calendar"></i> {{ formatDate(review.created_at) }}</span>
+                  </div>
+                  
+                  <!-- Действия -->
+                  <div class="card-actions">
+                    <Button icon="pi pi-map" label="На карте" text size="small" @click.stop="showOnMap(review)" />
+                    <Button icon="pi pi-pencil" label="Изменить" text size="small" @click.stop="editReview(review)" />
+                    <Button icon="pi pi-trash" label="Удалить" text severity="danger" size="small" @click.stop="confirmDeleteReview(review.id_review)" />
+                  </div>
+                </template>
+              </Card>
+            </div>
+          </TabPanel>
+
+          <!-- 🔹 Вкладка: Мои объекты -->
+          <TabPanel header="Мои объекты">
+            <div v-if="loadingObjects" class="tab-loading">
+              <i class="pi pi-spin pi-spinner"></i> Загрузка объектов...
+            </div>
+            
+            <div v-else-if="userObjects.length === 0" class="tab-empty">
+              <i class="pi pi-map-marker"></i>
+              <p>Вы ещё не добавляли объекты</p>
+              <Button label="Добавить объект" @click="$router.push('/map')" severity="success" size="small" />
+            </div>
+            
+            <div v-else class="cards-grid">
+              <Card v-for="obj in userObjects" :key="obj.id_object" class="data-card object-card">
+                <template #content>
+                  <!-- Шапка: тип + статус модерации -->
+                  <div class="card-header">
+                    <div class="object-icon-wrapper">
+                      <i :class="getTypeIcon(obj.type_name)" class="object-icon"></i>
+                    </div>
+                    <div class="object-badges">
+                      <span class="object-type">{{ obj.type_name }}</span>
+                      <Tag :value="getStatusLabel(obj.moderation_status)" 
+                           :severity="getStatusSeverity(obj.moderation_status)" 
+                           size="small" />
+                    </div>
+                  </div>
+                  
+                  <!-- Название и адрес -->
+                  <h4 class="object-name">{{ obj.name }}</h4>
+                  <p v-if="obj.address" class="object-address">
+                    <i class="pi pi-map-marker"></i> {{ obj.address }}
+                  </p>
+                  
+                  <!-- Мета: дата + отзывы -->
+                  <div class="card-meta">
+                    <span><i class="pi pi-calendar"></i> {{ formatDate(obj.created_at) }}</span>
+                    <span v-if="obj.review_count"><i class="pi pi-comment"></i> {{ obj.review_count }} отзывов</span>
+                  </div>
+                  
+                  <!-- Действия -->
+                  <div class="card-actions">
+                    <Button icon="pi pi-map" label="На карте" text size="small" @click="showObjectOnMap(obj)" />
+                    <Button icon="pi pi-info-circle" label="Подробнее" text size="small" @click="openObjectDetails(obj)" />
+                    <Button icon="pi pi-pencil" label="Редактировать" text size="small" @click="editObject(obj)" />
+                  </div>
+                </template>
+              </Card>
+            </div>
+          </TabPanel>
+          
+        </TabView>
+      </div>
+
     </div>
+
+    <!-- ===== МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ОБЪЕКТА ===== -->
+    <ObjectDetailsModal
+      v-if="modalObject"
+      :object="modalObject"
+      :visible="!!modalObject"
+      :review-to-edit="reviewToEdit"
+      @update:visible="val => { if (!val) { modalObject = null; reviewToEdit = null } }"
+      @review-submitted="onReviewSubmitted"
+      @review-updated="onReviewUpdated"
+      @go-to-map="showOnMapFromModal"
+    />
+
   </div>
 </template>
 
@@ -195,13 +332,19 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
+import TabView from 'primevue/tabview'
+import TabPanel from 'primevue/tabpanel'
+import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
 
 export default {
   name: 'ProfileView',
-  components: { Card, InputText, InputMask, Password, Button, Tag, Divider },
+  components: { 
+    Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, ObjectDetailsModal
+  },
   
   data() {
     return {
+      // Профиль
       profile: {
         id_user: null,
         email: '',
@@ -210,11 +353,15 @@ export default {
         role_name: '',
         created_at: null
       },
+      
+      // Активность
       activity: {
         total_reviews: 0,
         total_favorites: 0,
         total_objects_added: 0
       },
+      
+      // Форма редактирования
       form: {
         nickname: '',
         email: '',
@@ -222,16 +369,31 @@ export default {
         current_password: '',
         new_password: ''
       },
+      
       errors: {},
       isEditing: false,
       saving: false,
       loading: true,
-      loadingActivity: true
+      loadingActivity: true,
+      
+      // Данные для вкладок
+      userReviews: [],
+      userObjects: [],
+      loadingReviews: false,
+      loadingObjects: false,
+      
+      // Активная вкладка
+      activeTabIndex: 0,
+      
+      // Модальное окно
+      modalObject: null,
+      
+      // 🔥 Отзыв для редактирования
+      reviewToEdit: null
     }
   },
   
   async mounted() {
-    // Проверка авторизации
     const token = localStorage.getItem('auth_token')
     if (!token) {
       this.$router.push('/auth')
@@ -240,19 +402,21 @@ export default {
     
     await Promise.all([
       this.fetchProfile(),
-      this.fetchActivity()
+      this.fetchActivity(),
+      this.fetchUserReviews(),
+      this.fetchUserObjects()
     ])
   },
   
   methods: {
-    // Загрузка данных профиля
+    // ===== ЗАГРУЗКА ДАННЫХ =====
+    
     async fetchProfile() {
       try {
         this.loading = true
         const response = await axios.get('http://localhost:8000/api/users/me', {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
         })
-        
         this.profile = response.data
         this.form = {
           nickname: response.data.nickname,
@@ -263,12 +427,10 @@ export default {
         }
       } catch (error) {
         console.error('Ошибка загрузки профиля:', error)
-        
         if (error.response?.status === 401) {
           this.handleLogout()
           return
         }
-        
         this.$toast?.add({
           severity: 'error',
           summary: 'Ошибка',
@@ -287,11 +449,9 @@ export default {
         const response = await axios.get('http://localhost:8000/api/users/me/activity', {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
         })
-        
         this.activity = response.data
       } catch (error) {
         console.error('Ошибка загрузки активности:', error)
-        // Если таблица ещё не создана — ставим нули
         this.activity = {
           total_reviews: 0,
           total_favorites: 0,
@@ -302,7 +462,52 @@ export default {
       }
     },
     
-    // Начало редактирования
+    async fetchUserReviews() {
+      try {
+        this.loadingReviews = true
+        const response = await axios.get('http://localhost:8000/api/users/me/reviews', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+        })
+        
+        // 🔥 НОРМАЛИЗАЦИЯ: приводим данные к единому формату
+        this.userReviews = response.data.map(review => ({
+          ...review,
+          // Копируем поля из вложенного object на верхний уровень
+          id_object: review.object?.id_object,
+          object_name: review.object?.name,
+          object_type: review.object?.type,
+          object_address: review.object?.address,
+          coords: review.object?.coords,
+          latitude: review.object?.coords?.[0],
+          longitude: review.object?.coords?.[1]
+        }))
+        
+        console.log('📦 Нормализованные отзывы:', this.userReviews)
+      } catch (error) {
+        console.error('Ошибка загрузки отзывов:', error)
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить отзывы', life: 3000, styleClass: 'my-error-toast' })
+      } finally {
+        this.loadingReviews = false
+      }
+    },
+    
+    async fetchUserObjects() {
+      try {
+        this.loadingObjects = true
+        const response = await axios.get('http://localhost:8000/api/users/me/objects', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+        })
+        this.userObjects = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки объектов:', error)
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объекты', life: 3000, styleClass: 'my-error-toast' })
+      } finally {
+        this.loadingObjects = false
+      }
+    },
+    
+    // ===== РЕДАКТИРОВАНИЕ ПРОФИЛЯ =====
+    
     startEditing() {
       this.isEditing = true
       this.errors = {}
@@ -310,7 +515,6 @@ export default {
       this.form.new_password = ''
     },
     
-    // Отмена редактирования
     cancelEditing() {
       this.isEditing = false
       this.errors = {}
@@ -323,17 +527,14 @@ export default {
       }
     },
     
-    // Валидация формы
     validateForm() {
       this.errors = {}
       
       if (!this.form.nickname?.trim()) {
         this.errors.nickname = 'Введите никнейм'
-      } 
-      else if (this.form.nickname.length < 3) {
+      } else if (this.form.nickname.length < 3) {
         this.errors.nickname = 'Минимум 3 символа'
-      } 
-      else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
+      } else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
         this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
       }
       
@@ -343,7 +544,6 @@ export default {
         this.errors.email = 'Некорректный email'
       }
       
-      // Если меняем пароль — нужен текущий
       if (this.form.new_password && !this.form.current_password) {
         this.errors.current_password = 'Введите текущий пароль для подтверждения'
       }
@@ -368,7 +568,6 @@ export default {
       try {
         const payload = {}
         
-        // Отправляем только изменённые поля
         if (this.form.nickname !== this.profile.nickname) {
           payload.nickname = this.form.nickname.trim()
         }
@@ -385,7 +584,6 @@ export default {
           payload.new_password = this.form.new_password
         }
         
-        // Если ничего не меняем
         if (Object.keys(payload).length === 0) {
           this.$toast?.add({
             severity: 'info',
@@ -398,7 +596,6 @@ export default {
           return
         }
         
-        // Запрос к бэкенду
         const response = await axios.put(
           'http://localhost:8000/api/users/me',
           new URLSearchParams(payload),
@@ -410,17 +607,13 @@ export default {
           }
         )
         
-        // Обновляем локальные данные
         this.profile = response.data
-        
-        // Обновляем localStorage
         localStorage.setItem('user', JSON.stringify({
           id: response.data.id_user,
           nickname: response.data.nickname,
           role: response.data.role_name
         }))
         
-        // Сообщаем другим компонентам
         window.dispatchEvent(new CustomEvent('user-updated', {
           detail: { user: response.data }
         }))
@@ -436,9 +629,7 @@ export default {
         
       } catch (error) {
         console.error('Ошибка сохранения:', error)
-        
         const message = error.response?.data?.detail || 'Не удалось сохранить изменения'
-        
         this.$toast?.add({
           severity: 'error',
           summary: 'Ошибка',
@@ -451,33 +642,270 @@ export default {
       }
     },
     
+    // ===== ВКЛАДКИ: УПРАВЛЕНИЕ =====
+    
+    switchToTab(index) {
+      this.activeTabIndex = index
+      this.$nextTick(() => {
+        const dashboard = document.querySelector('.dashboard-section')
+        if (dashboard) {
+          dashboard.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
+    },
+    
+    goToFavorites() {
+      this.$router.push('/favorites')
+    },
+    
+    // ===== РАБОТА С ОБЪЕКТАМИ И ОТЗЫВАМИ =====
+    
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: работает с вложенным object
+    async openObjectFromReview(review) {
+      console.log('🔍 openObjectFromReview — отзыв:', review)
+      
+      // 🔥 Читаем ID из вложенного object
+      const objectId = review.id_object || review.object?.id_object || review.object_id
+      
+      if (objectId) {
+        try {
+          console.log(`📡 Запрос объекта по ID: ${objectId}`)
+          const response = await axios.get(`http://localhost:8000/api/objects/${objectId}`)
+          console.log('✅ Объект найден:', response.data)
+          this.modalObject = response.data
+          return
+        } catch (error) {
+          console.error(`❌ Ошибка загрузки объекта по ID ${objectId}:`, error)
+        }
+      }
+      
+      // Фолбэк: поиск по названию
+      const objectName = review.object_name || review.object?.name
+      if (objectName) {
+        try {
+          console.log(`🔎 Поиск объекта по названию: "${objectName}"`)
+          const response = await axios.get('http://localhost:8000/api/objects', {
+            params: { 
+              search: objectName, 
+              limit: 1,
+              type: review.object_type || review.object?.type
+            }
+          })
+          
+          if (response.data && response.data.length > 0) {
+            console.log('✅ Объект найден по названию:', response.data[0])
+            this.modalObject = response.data[0]
+            return
+          }
+        } catch (error) {
+          console.error('❌ Ошибка поиска объекта по названию:', error)
+        }
+      }
+      
+      console.error('❌ Не удалось найти объект для отзыва:', review)
+      this.$toast?.add({ 
+        severity: 'error', 
+        summary: 'Ошибка', 
+        detail: 'Не удалось найти объект. Возможно, он был удалён.', 
+        life: 4000, 
+        styleClass: 'my-error-toast' 
+      })
+    },
+    
+    async openObjectDetails(obj) {
+      try {
+        const response = await axios.get(`http://localhost:8000/api/objects/${obj.id_object}`)
+        this.modalObject = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки объекта:', error)
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объект', life: 3000, styleClass: 'my-error-toast' })
+      }
+    },
+    
+    showOnMap(review) {
+      // 🔥 Читаем координаты из вложенного object
+      const coords = review.coords || review.object?.coords || (review.latitude && review.longitude ? [review.latitude, review.longitude] : null)
+      const objectId = review.id_object || review.object?.id_object || review.object_id
+      
+      this.$router.push({
+        path: '/map',
+        query: { 
+          focus: coords ? `${coords[0]},${coords[1]}` : null,
+          zoom: 17,
+          id: objectId,
+          type: review.object_type || review.object?.type,
+          name: review.object_name || review.object?.name,
+          address: review.object_address || review.object?.address
+        }
+      })
+    },
+    
+    showOnMapFromModal(obj) {
+      this.$router.push({
+        path: '/map',
+        query: { 
+          focus: `${obj.latitude},${obj.longitude}`,
+          zoom: 17,
+          id: obj.id_object,
+          type: obj.type_name,
+          name: obj.name,
+          address: obj.address
+        }
+      })
+    },
+    
+    showObjectOnMap(obj) {
+      this.$router.push({
+        path: '/map',
+        query: { 
+          focus: `${obj.latitude},${obj.longitude}`,
+          zoom: 17,
+          id: obj.id_object,
+          type: obj.type_name,
+          name: obj.name,
+          address: obj.address
+        }
+      })
+    },
+    
+    // 🔥 РЕДАКТИРОВАНИЕ ОТЗЫВА
+    async editReview(review) {
+      console.log('✏️ editReview вызван с отзывом:', review)
+      
+      // Сохраняем отзыв для редактирования
+      this.reviewToEdit = { ...review }
+      
+      // Загружаем объект
+      await this.openObjectFromReview(review)
+      
+      // Проверяем, что объект загрузился
+      if (!this.modalObject) {
+        console.error('❌ Объект не загрузился, модалка не откроется')
+        return
+      }
+      
+      // Ждем рендер модалки
+      this.$nextTick(() => {
+        console.log('✅ $nextTick: модалка должна открыться с формой редактирования')
+      })
+    },
+    
+    // 🔥 УДАЛЕНИЕ ОТЗЫВА
+    async confirmDeleteReview(reviewId) {
+      if (!confirm('Вы уверены, что хотите удалить этот отзыв?')) return
+      
+      try {
+        const response = await axios.delete(`http://localhost:8000/api/reviews/${reviewId}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+        })
+        
+        if (response.data?.success) {
+          this.userReviews = this.userReviews.filter(r => r.id_review !== reviewId)
+          this.$toast?.add({ 
+            severity: 'success', 
+            summary: 'Удалено', 
+            detail: 'Отзыв успешно удалён', 
+            life: 2000,
+            styleClass: 'my-success-toast'
+          })
+        }
+      } catch (error) {
+        console.error('Ошибка удаления:', error)
+        const message = error.response?.data?.detail || 'Не удалось удалить отзыв'
+        this.$toast?.add({ 
+          severity: 'error', 
+          summary: 'Ошибка', 
+          detail: message, 
+          life: 3000,
+          styleClass: 'my-error-toast'
+        })
+      }
+    },
+    
+    editObject(obj) {
+      this.$toast?.add({ 
+        severity: 'info', 
+        summary: 'Редактирование', 
+        detail: 'Функция редактирования объекта в разработке', 
+        life: 3000,
+        styleClass: 'my-info-toast'
+      })
+    },
+    
+    // 🔥 Обработка отправки/обновления отзыва из модалки
+    onReviewSubmitted(result) {
+      if (result.success) {
+        this.fetchUserReviews()
+        this.reviewToEdit = null
+      }
+    },
+    
+    // 🔥 Обработка обновления отзыва
+    onReviewUpdated(result) {
+      if (result.success) {
+        const idx = this.userReviews.findIndex(r => r.id_review === result.id_review)
+        if (idx !== -1) {
+          this.userReviews[idx] = { ...this.userReviews[idx], ...result }
+        }
+        this.$toast?.add({ 
+          severity: 'success', 
+          summary: 'Обновлено', 
+          detail: 'Отзыв успешно изменён', 
+          life: 2000,
+          styleClass: 'my-success-toast'
+        })
+        this.reviewToEdit = null
+      }
+    },
+    
+    // ===== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====
+    
+    getTypeIcon(typeName) {
+      const map = {
+        'парк': 'pi pi-tree', 'скамейка': 'pi pi-chair', 'фонарь': 'pi pi-lightbulb',
+        'мусорка': 'pi pi-trash', 'детская площадка': 'pi pi-users', 'дорожка': 'pi pi-route',
+        'клумба': 'pi pi-star', 'кафе': 'pi pi-coffee', 'ресторан': 'pi pi-utensils',
+        'магазин': 'pi pi-shopping-bag'
+      }
+      const key = Object.keys(map).find(k => typeName?.toLowerCase().includes(k))
+      return map[key] || 'pi pi-map-marker'
+    },
+    
+    getCategorySeverity(category) {
+      const map = {
+        'проблема': 'danger', 'предложение': 'info', 'похвала': 'success', 'вопрос': 'warn',
+        'problem': 'danger', 'suggestion': 'info', 'praise': 'success'
+      }
+      return map[category?.toLowerCase()] || 'secondary'
+    },
+    
+    getStatusLabel(status) {
+      const map = { 'approved': 'Одобрен', 'pending': 'На модерации', 'rejected': 'Отклонён' }
+      return map[status] || status
+    },
+    
+    getStatusSeverity(status) {
+      const map = { 'approved': 'success', 'pending': 'warn', 'rejected': 'danger' }
+      return map[status] || 'secondary'
+    },
+    
+    formatDate(dateString) {
+      if (!dateString) return '—'
+      return new Date(dateString).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+    },
+    
     handleLogout() {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('user')
-      
-      window.dispatchEvent(new CustomEvent('auth-change', { 
-        detail: { isAuthenticated: false } 
-      }))
-      
-      this.$toast?.add({
+      window.dispatchEvent(new CustomEvent('auth-change', { detail: { isAuthenticated: false } }))
+      this.$toast?.add({ 
         severity: 'info',
         summary: 'Выход',
         detail: 'Вы вышли из системы',
         life: 2000,
         styleClass: 'my-info-toast'
       })
-      
       this.$router.push('/')
-    },
-    
-    // Форматирование даты
-    formatDate(dateString) {
-      if (!dateString) return '—'
-      return new Date(dateString).toLocaleDateString('ru-RU', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
     }
   }
 }
@@ -491,12 +919,7 @@ export default {
   background: transparent;
   padding-bottom: 100px;
 }
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
-}
+.container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 
 /* ===================== ЗАГОЛОВОК ===================== */
 .profile-header {
@@ -505,7 +928,6 @@ export default {
   padding: 60px 0px 0px;
   margin-bottom: 20px;
 }
-
 .page-title {
   font-size: 33px;
   font-weight: 800;
@@ -529,15 +951,11 @@ export default {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
   background: rgba(255, 255, 255, 0.9) !important;
 }
-
 :deep(.p-card-title) {
   padding: 20px 24px !important;
   border-bottom: 1px solid rgba(22, 143, 4, 0.1) !important;
 }
-
-:deep(.p-card-content) {
-  padding: 24px !important;
-}
+:deep(.p-card-content) { padding: 24px !important; }
 
 .card-title {
   display: flex;
@@ -547,23 +965,10 @@ export default {
   font-weight: 700;
   color: #014f00;
 }
-
-.card-title i {
-  font-size: 20px;
-  color: #168f04;
-}
-
-.card-title.danger i {
-  color: #dc2626;
-}
+.card-title i { font-size: 20px; color: #168f04; }
 
 /* ===================== ПРОСМОТР ПРОФИЛЯ ===================== */
-.profile-view {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
+.profile-view { display: flex; flex-direction: column; gap: 16px; }
 .profile-field {
   display: flex;
   justify-content: space-between;
@@ -571,88 +976,30 @@ export default {
   padding: 12px 0;
   border-bottom: 1px solid rgba(22, 143, 4, 0.1);
 }
-
-.profile-field:last-child {
-  border-bottom: none;
-}
-
-.profile-field label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.field-value {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a1a1a;
-  text-align: right;
-  margin: 0;
-}
-
-.btn-edit {
-  margin-top: 8px;
-  width: 100%;
-  border-radius: 12px !important;
-}
+.profile-field:last-child { border-bottom: none; }
+.profile-field label { font-size: 14px; font-weight: 500; color: #64748b; }
+.field-value { font-size: 15px; font-weight: 600; color: #1a1a1a; text-align: right; margin: 0; }
+.btn-edit { margin-top: 8px; width: 100%; border-radius: 12px !important; }
 
 /* ===================== РЕДАКТИРОВАНИЕ ===================== */
-.profile-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+.profile-edit { display: flex; flex-direction: column; gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group label { font-size: 14px; font-weight: 500; color: #334155; }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #334155;
-}
-
-:deep(.p-inputtext),
-:deep(.p-inputmask),
-:deep(.p-password) {
+:deep(.p-inputtext), :deep(.p-inputmask), :deep(.p-password) {
   width: 100%;
   border-radius: 12px !important;
   border: 2px solid #e2e8f0 !important;
   transition: border-color 0.3s !important;
 }
-
-:deep(.p-inputtext:focus),
-:deep(.p-inputmask:focus),
-:deep(.p-password :focus) {
+:deep(.p-inputtext:focus), :deep(.p-inputmask:focus), :deep(.p-password :focus) {
   border-color: #168f04 !important;
   box-shadow: 0 0 0 4px rgba(22, 143, 4, 0.1) !important;
 }
-
-.p-error {
-  color: #dc2626 !important;
-  font-size: 12px !important;
-}
-
-.hint-text {
-  color: #64748b;
-  font-size: 11px;
-  margin-top: 4px;
-}
-
-.edit-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.btn-save,
-.btn-cancel {
-  flex: 1;
-  border-radius: 12px !important;
-}
+.p-error { color: #dc2626 !important; font-size: 12px !important; }
+.hint-text { color: #64748b; font-size: 11px; margin-top: 4px; }
+.edit-actions { display: flex; gap: 12px; margin-top: 8px; }
+.btn-save, .btn-cancel { flex: 1; border-radius: 12px !important; }
 
 /* ===================== СТАТИСТИКА ===================== */
 .loading-stats {
@@ -663,60 +1010,302 @@ export default {
   color: #64748b;
   padding: 20px 0;
 }
-
-.loading-stats i {
-  font-size: 20px;
-  color: #168f04;
-}
-
+.loading-stats i { font-size: 20px; color: #168f04; }
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   text-align: center;
 }
-
 .stat-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: all 0.2s ease;
+  border-radius: 12px;
+  padding: 10px 4px;
+  cursor: pointer;
 }
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 800;
-  color: #168f04;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #64748b;
-}
+.stat-item:hover { background-color: rgba(22, 143, 4, 0.08); transform: translateY(-2px); }
+.stat-item:active { transform: translateY(0); background-color: rgba(22, 143, 4, 0.15); }
+.stat-value { font-size: 24px; font-weight: 800; color: #168f04; }
+.stat-label { font-size: 12px; color: #64748b; font-weight: 500; }
 
 /* ===================== ОПАСНАЯ ЗОНА ===================== */
-.danger-card :deep(.p-card) {
-  border-color: rgba(220, 38, 38, 0.2) !important;
-}
-
-.btn-logout {
-  width: 100%;
-  border-radius: 12px !important;
-}
+.danger-card :deep(.p-card) { border-color: rgba(220, 38, 38, 0.2) !important; }
+.btn-logout { width: 100%; border-radius: 12px !important; }
 
 /* ===================== DIVIDER ===================== */
-:deep(.p-divider .p-divider-content) {
+:deep(.p-divider .p-divider-content) { background: #fff !important; padding: 0 12px !important; }
+.divider-text { color: #64748b; font-size: 13px; font-weight: 500; }
+:deep(.p-divider) { border-color: rgba(22, 143, 4, 0.1) !important; margin: 8px 0 !important; }
+
+/* ===================== ВКЛАДКИ ===================== */
+.dashboard-section { margin-top: 20px; background-color: transparent; margin-top: 100px; }
+:deep(.p-tabview) { width: 100%; }
+:deep(.p-tabview-nav) {
+  background: linear-gradient(135deg, rgba(22, 143, 4, 0.08), rgba(22, 143, 4, 0.02)) !important;
+  border: 1px solid rgba(22, 143, 4, 0.2) !important;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 6px !important;
+  gap: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+:deep(.p-tabview-nav-link) {
+  border: none !important;
+  border-radius: 12px !important;
+  color: #64748b !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  padding: 12px 24px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: transparent !important;
+  position: relative;
+  overflow: hidden;
+}
+:deep(.p-tabview-nav-link)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(22, 143, 4, 0.15), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  border-radius: 12px;
+}
+:deep(.p-tabview-nav-link:hover) {
+  color: #168f04 !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(22, 143, 4, 0.1);
+}
+:deep(.p-tabview-nav-link:hover)::before { opacity: 1; }
+:deep(.p-tabview-nav-link.p-highlight) {
+  color: #fff !important;
+  background: linear-gradient(135deg, #168f04, #0d6f03) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 16px rgba(22, 143, 4, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+}
+:deep(.p-tabview-nav-link.p-highlight)::before { display: none; }
+:deep(.p-tabview-panels) {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(22, 143, 4, 0.15) !important;
+  border-top: none !important;
+  border-radius: 0 0 16px 16px !important;
+  padding: 24px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== СЕТКА КАРТОЧЕК ===== */
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px; }
+.data-card {
+  border-radius: 16px !important;
+  border: 1px solid rgba(22, 143, 4, 0.15) !important;
   background: #fff !important;
-  padding: 0 12px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
+.data-card:hover {
+  box-shadow: 0 12px 40px rgba(22, 143, 4, 0.15) !important;
+  border-color: rgba(22, 143, 4, 0.35) !important;
+  transform: translateY(-3px);
+}
+.data-card :deep(.p-card-content) { padding: 20px !important; }
 
-.divider-text {
+/* ===== КАРТОЧКА ОТЗЫВА ===== */
+.review-card { border-left: 4px solid #168f04 !important; }
+.object-link-wrapper {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 12px;
+  padding: 4px;
+  margin: -4px;
+}
+.object-link-wrapper:hover { background: rgba(22, 143, 4, 0.06); }
+.object-link-wrapper:active { background: rgba(22, 143, 4, 0.12); }
+.review-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(22, 143, 4, 0.2);
+}
+.object-info { flex: 1; min-width: 0; }
+.object-preview { display: flex; align-items: flex-start; gap: 14px; }
+.object-icon-large {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(22, 143, 4, 0.2), rgba(22, 143, 4, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #168f04;
+  font-size: 26px;
+}
+.object-meta-info { flex: 1; min-width: 0; }
+.object-type-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #168f04;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: rgba(22, 143, 4, 0.12);
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-bottom: 6px;
+}
+.object-name {
+  font-weight: 700;
+  color: #014f00;
+  font-size: 16px;
+  margin: 0 0 4px 0;
+  line-height: 1.3;
+}
+.object-address {
+  font-size: 12px;
   color: #64748b;
-  font-size: 13px;
-  font-weight: 500;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.object-address i { font-size: 11px; color: #168f04; }
+.category-tag { flex-shrink: 0; }
+.card-text {
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 14px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.rating-badge {
+  color: #f59e0b;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.rating-badge i { font-size: 11px; }
+.date { display: flex; align-items: center; gap: 4px; }
+.card-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 14px;
+  border-top: 1px solid rgba(22, 143, 4, 0.12);
+  flex-wrap: wrap;
 }
 
-:deep(.p-divider) {
-  border-color: rgba(22, 143, 4, 0.1) !important;
-  margin: 8px 0 !important;
+/* ===== КАРТОЧКА ОБЪЕКТА ===== */
+.object-card { border-left: 4px solid #3b82f6 !important; }
+.object-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed rgba(22, 143, 4, 0.2);
+}
+.object-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(22, 143, 4, 0.15), rgba(22, 143, 4, 0.05));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.object-icon { font-size: 22px; color: #168f04; }
+.object-badges { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.object-type {
+  font-size: 12px;
+  font-weight: 700;
+  color: #168f04;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.object-card .object-name {
+  font-weight: 700;
+  color: #1a1a1a;
+  font-size: 16px;
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+}
+.object-card .object-address {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.object-card .card-meta { margin-bottom: 16px; }
+.object-card .card-actions {
+  padding-top: 14px;
+  border-top: 1px solid rgba(22, 143, 4, 0.12);
+}
+.status-badge { margin-left: auto; }
+
+/* ===== ПУСТОЕ / ЗАГРУЗОЧНОЕ СОСТОЯНИЕ ===== */
+.tab-empty, .tab-loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: #64748b;
+  background: rgba(22, 143, 4, 0.03);
+  border-radius: 12px;
+  border: 1px dashed rgba(22, 143, 4, 0.2);
+}
+.tab-empty i, .tab-loading i {
+  font-size: 3rem;
+  color: #168f04;
+  margin-bottom: 16px;
+  display: block;
+  opacity: 0.8;
+}
+.tab-empty p { margin: 0 0 20px; font-size: 15px; }
+
+/* ===== АДАПТИВ ===== */
+@media (max-width: 1024px) {
+  .profile-grid { grid-template-columns: 1fr; }
+  .profile-sidebar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+  .cards-grid { grid-template-columns: 1fr; }
+  .object-preview { flex-direction: column; }
+  .review-card .card-header, .object-card .card-header { flex-direction: column; align-items: flex-start; }
+  .object-icon-wrapper { align-self: flex-start; }
+}
+@media (max-width: 768px) {
+  .profile-sidebar { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat-value { font-size: 20px; }
+  .stat-label { font-size: 11px; }
+  :deep(.p-tabview-nav) { overflow-x: auto; flex-wrap: nowrap; padding: 4px !important; }
+  :deep(.p-tabview-nav-link) { padding: 10px 18px !important; font-size: 13px !important; white-space: nowrap; }
+  .card-actions { flex-wrap: wrap; }
+  .card-actions :deep(.p-button) { flex: 1; min-width: auto; justify-content: center; }
 }
 </style>
