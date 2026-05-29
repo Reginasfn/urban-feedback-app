@@ -12,8 +12,6 @@
         <div class="footer-section">
           <h4 class="section-title">Разделы</h4>
           <router-link to="/map" class="footer-link">Карта</router-link>
-          <router-link to="/objects" class="footer-link">Объекты</router-link>
-          <router-link to="/rating" class="footer-link">Рейтинг</router-link>
           <router-link to="/admin" class="footer-link">Админ-панель</router-link>
         </div>
         
@@ -21,9 +19,6 @@
         <div class="footer-section">
           <h4 class="section-title">Информация</h4>
           <router-link to="/about" class="footer-link">О проекте</router-link>
-          <!-- <router-link to="/rules" class="footer-link">Правила</router-link>
-          <router-link to="/faq" class="footer-link">Вопросы</router-link>
-          <router-link to="/contacts" class="footer-link">Контакты</router-link> -->
         </div>
         
         <!-- Контакты -->

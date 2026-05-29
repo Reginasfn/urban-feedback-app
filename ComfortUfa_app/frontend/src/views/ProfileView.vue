@@ -1,5 +1,3 @@
-<!-- frontend\src\views\ProfileView.vue -->
-
 <template>
   <div class="profile-page">
     
@@ -212,10 +210,10 @@
                       <div class="object-info">
                         <div class="object-preview">
                           <div class="object-icon-large">
-                            <i :class="getTypeIcon(review.type_name)"></i>
+                            <i :class="getTypeIcon(review.type_name || review.object_type)"></i>
                           </div>
                           <div class="object-meta-info">
-                            <span class="object-type-badge">{{ review.type_name || 'Объект' }}</span>
+                            <span class="object-type-badge">{{ review.type_name || review.object_type || 'Объект' }}</span>
                             <h4 class="object-name">{{ review.object_name }}</h4>
                             <p v-if="review.object_address" class="object-address">
                               <i class="pi pi-map-marker"></i> {{ review.object_address }}
@@ -252,7 +250,7 @@
             </div>
           </TabPanel>
 
-          <!-- 🔹 Вкладка: Мои объекты -->
+          <!-- 🔹 Вкладка: Мои объекты (СТИЛИ КАК В ОТЗЫВАХ) -->
           <TabPanel header="Мои объекты">
             <div v-if="loadingObjects" class="tab-loading">
               <i class="pi pi-spin pi-spinner"></i> Загрузка объектов...
@@ -265,26 +263,30 @@
             </div>
             
             <div v-else class="cards-grid">
-              <Card v-for="obj in userObjects" :key="obj.id_object" class="data-card object-card">
+              <Card v-for="obj in userObjects" :key="obj.id_object" class="data-card review-card">
                 <template #content>
-                  <!-- Шапка: тип + статус модерации -->
+                  <!-- Шапка: тип + статус модерации (как в отзывах) -->
                   <div class="card-header">
-                    <div class="object-icon-wrapper">
-                      <i :class="getTypeIcon(obj.type_name)" class="object-icon"></i>
+                    <div class="object-info">
+                      <div class="object-preview">
+                        <div class="object-icon-large">
+                          <i :class="getTypeIcon(obj.type_name)"></i>
+                        </div>
+                        <div class="object-meta-info">
+                          <span class="object-type-badge">{{ obj.type_name || 'Объект' }}</span>
+                          <h4 class="object-name">{{ obj.name }}</h4>
+                          <p v-if="obj.address" class="object-address">
+                            <i class="pi pi-map-marker"></i> {{ obj.address }}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div class="object-badges">
-                      <span class="object-type">{{ obj.type_name }}</span>
-                      <Tag :value="getStatusLabel(obj.moderation_status)" 
-                           :severity="getStatusSeverity(obj.moderation_status)" 
-                           size="small" />
-                    </div>
+                    <!-- Статус модерации вместо категории -->
+                    <Tag :value="getStatusLabel(obj.moderation_status)" 
+                         :severity="getStatusSeverity(obj.moderation_status)" 
+                         size="small" 
+                         class="category-tag" />
                   </div>
-                  
-                  <!-- Название и адрес -->
-                  <h4 class="object-name">{{ obj.name }}</h4>
-                  <p v-if="obj.address" class="object-address">
-                    <i class="pi pi-map-marker"></i> {{ obj.address }}
-                  </p>
                   
                   <!-- Мета: дата + отзывы -->
                   <div class="card-meta">
@@ -389,7 +391,11 @@ export default {
       modalObject: null,
       
       // 🔥 Отзыв для редактирования
-      reviewToEdit: null
+      reviewToEdit: null,
+      
+      // 🔥 НАСТРОЙКА СКРОЛЛА (регулируй это значение!)
+      // 0 = самый верх, 100 = отступ 100px, 200 = отступ 200px и т.д.
+      mapScrollPosition: 165
     }
   },
   
@@ -476,10 +482,14 @@ export default {
           id_object: review.object?.id_object,
           object_name: review.object?.name,
           object_type: review.object?.type,
+          type_name: review.object?.type,  // ← для совместимости с шаблоном
           object_address: review.object?.address,
           coords: review.object?.coords,
           latitude: review.object?.coords?.[0],
-          longitude: review.object?.coords?.[1]
+          longitude: review.object?.coords?.[1],
+          // 🔥 Рейтинг для балуна
+          rating_avg: review.object?.rating_avg,
+          rating_count: review.object?.rating_count
         }))
         
         console.log('📦 Нормализованные отзывы:', this.userReviews)
@@ -649,7 +659,13 @@ export default {
       this.$nextTick(() => {
         const dashboard = document.querySelector('.dashboard-section')
         if (dashboard) {
-          dashboard.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          const rect = dashboard.getBoundingClientRect()
+          const offsetTop = rect.top + window.pageYOffset - 150
+          
+          window.scrollTo({
+            top: offsetTop,
+            behavior: 'smooth'
+          })
         }
       })
     },
@@ -660,11 +676,9 @@ export default {
     
     // ===== РАБОТА С ОБЪЕКТАМИ И ОТЗЫВАМИ =====
     
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: работает с вложенным object
     async openObjectFromReview(review) {
       console.log('🔍 openObjectFromReview — отзыв:', review)
       
-      // 🔥 Читаем ID из вложенного object
       const objectId = review.id_object || review.object?.id_object || review.object_id
       
       if (objectId) {
@@ -679,7 +693,6 @@ export default {
         }
       }
       
-      // Фолбэк: поиск по названию
       const objectName = review.object_name || review.object?.name
       if (objectName) {
         try {
@@ -722,26 +735,109 @@ export default {
       }
     },
     
-    showOnMap(review) {
-      // 🔥 Читаем координаты из вложенного object
-      const coords = review.coords || review.object?.coords || (review.latitude && review.longitude ? [review.latitude, review.longitude] : null)
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: переход на карту с регулируемым скроллом
+    async showOnMap(review) {
+      console.log('🗺️ showOnMap — исходный отзыв:', review)
+      
+      // 🔥 Читаем ID объекта (обязательно!)
       const objectId = review.id_object || review.object?.id_object || review.object_id
       
-      this.$router.push({
+      if (!objectId) {
+        console.error('❌ Нет ID объекта!')
+        this.$toast?.add({
+          severity: 'error',
+          summary: 'Ошибка',
+          detail: 'Не удалось найти ID объекта',
+          life: 3000,
+          styleClass: 'my-error-toast'
+        })
+        return
+      }
+      
+      // 🔥 Пробуем прочитать координаты из отзыва
+      let coords = review.coords || review.object?.coords
+      if (!coords && review.latitude && review.longitude) {
+        coords = [review.latitude, review.longitude]
+      }
+      
+      // 🔥 Если координат нет — загружаем полный объект с бэкенда
+      if (!coords) {
+        console.log(`📡 Загружаем объект ${objectId} для получения координат...`)
+        try {
+          const response = await axios.get(`http://localhost:8000/api/objects/${objectId}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+          })
+          
+          const fullObject = response.data
+          console.log('✅ Объект загружен:', fullObject)
+          
+          coords = fullObject.coords || [fullObject.latitude, fullObject.longitude]
+          
+          // Обновляем данные для передачи
+          review.object_name = fullObject.name
+          review.object_type = fullObject.type_name
+          review.object_address = fullObject.address
+          review.rating_avg = fullObject.rating_avg
+          review.rating_count = fullObject.rating_count
+          
+        } catch (error) {
+          console.error('❌ Ошибка загрузки объекта:', error)
+          this.$toast?.add({
+            severity: 'error',
+            summary: 'Ошибка',
+            detail: 'Не удалось загрузить данные объекта',
+            life: 3000,
+            styleClass: 'my-error-toast'
+          })
+          return
+        }
+      }
+      
+      // 🔥 Читаем остальные данные
+      const objectName = review.object_name || review.object?.name
+      const objectType = review.object_type || review.object?.type || review.type_name
+      const objectAddress = review.object_address || review.object?.address
+      const ratingAvg = review.rating_avg || review.object?.rating_avg
+      const ratingCount = review.rating_count || review.object?.rating_count
+      
+      // 🔥 Отладка
+      console.log('🗺️ showOnMap params:', {
+        focus: coords ? `${coords[0]},${coords[1]}` : null,
+        id: objectId,
+        type: objectType,
+        name: objectName,
+        address: objectAddress,
+        rating_avg: ratingAvg,
+        rating_count: ratingCount
+      })
+      
+      // 🔥 Переход на карту (ждем завершения!)
+      await this.$router.push({
         path: '/map',
         query: { 
           focus: coords ? `${coords[0]},${coords[1]}` : null,
           zoom: 17,
           id: objectId,
-          type: review.object_type || review.object?.type,
-          name: review.object_name || review.object?.name,
-          address: review.object_address || review.object?.address
+          type: objectType,
+          name: objectName,
+          address: objectAddress || '',
+          rating_avg: ratingAvg,
+          rating_count: ratingCount
         }
+      })
+      
+      // 🔥 Скролл ПОСЛЕ перехода (с регулируемой позицией!)
+      this.$nextTick(() => {
+        setTimeout(() => {
+          // 🔧 МЕНЯЙ ЭТО ЗНАЧЕНИЕ: 0 = верх, 100 = отступ 100px, и т.д.
+          window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+        }, 100)
       })
     },
     
-    showOnMapFromModal(obj) {
-      this.$router.push({
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: переход из модалки с регулируемым скроллом
+    async showOnMapFromModal(obj) {
+      await this.$router.push({
         path: '/map',
         query: { 
           focus: `${obj.latitude},${obj.longitude}`,
@@ -749,13 +845,23 @@ export default {
           id: obj.id_object,
           type: obj.type_name,
           name: obj.name,
-          address: obj.address
+          address: obj.address,
+          rating_avg: obj.rating_avg,
+          rating_count: obj.rating_count
         }
+      })
+      
+      // 🔥 Скролл ПОСЛЕ перехода (с регулируемой позицией!)
+      this.$nextTick(() => {
+        setTimeout(() => {
+          window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+        }, 100)
       })
     },
     
-    showObjectOnMap(obj) {
-      this.$router.push({
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: переход из вкладки "Мои объекты" с регулируемым скроллом
+    async showObjectOnMap(obj) {
+      await this.$router.push({
         path: '/map',
         query: { 
           focus: `${obj.latitude},${obj.longitude}`,
@@ -763,8 +869,17 @@ export default {
           id: obj.id_object,
           type: obj.type_name,
           name: obj.name,
-          address: obj.address
+          address: obj.address,
+          rating_avg: obj.rating_avg,
+          rating_count: obj.rating_count
         }
+      })
+      
+      // 🔥 Скролл ПОСЛЕ перехода (с регулируемой позицией!)
+      this.$nextTick(() => {
+        setTimeout(() => {
+          window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+        }, 100)
       })
     },
     
@@ -772,19 +887,14 @@ export default {
     async editReview(review) {
       console.log('✏️ editReview вызван с отзывом:', review)
       
-      // Сохраняем отзыв для редактирования
       this.reviewToEdit = { ...review }
-      
-      // Загружаем объект
       await this.openObjectFromReview(review)
       
-      // Проверяем, что объект загрузился
       if (!this.modalObject) {
         console.error('❌ Объект не загрузился, модалка не откроется')
         return
       }
       
-      // Ждем рендер модалки
       this.$nextTick(() => {
         console.log('✅ $nextTick: модалка должна открыться с формой редактирования')
       })
@@ -1117,8 +1227,11 @@ export default {
 }
 .data-card :deep(.p-card-content) { padding: 20px !important; }
 
-/* ===== КАРТОЧКА ОТЗЫВА ===== */
-.review-card { border-left: 4px solid #168f04 !important; }
+/* ===== КАРТОЧКА ОТЗЫВА / ОБЪЕКТА (ОДИНАКОВЫЕ СТИЛИ) ===== */
+.review-card,
+.object-card { 
+  border-left: 4px solid #168f04 !important; /* Одинаковая зелёная полоса */
+}
 .object-link-wrapper {
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1128,7 +1241,8 @@ export default {
 }
 .object-link-wrapper:hover { background: rgba(22, 143, 4, 0.06); }
 .object-link-wrapper:active { background: rgba(22, 143, 4, 0.12); }
-.review-card .card-header {
+.review-card .card-header,
+.object-card .card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -1219,57 +1333,6 @@ export default {
   border-top: 1px solid rgba(22, 143, 4, 0.12);
   flex-wrap: wrap;
 }
-
-/* ===== КАРТОЧКА ОБЪЕКТА ===== */
-.object-card { border-left: 4px solid #3b82f6 !important; }
-.object-card .card-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
-  padding-bottom: 14px;
-  border-bottom: 1px dashed rgba(22, 143, 4, 0.2);
-}
-.object-icon-wrapper {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(22, 143, 4, 0.15), rgba(22, 143, 4, 0.05));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.object-icon { font-size: 22px; color: #168f04; }
-.object-badges { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.object-type {
-  font-size: 12px;
-  font-weight: 700;
-  color: #168f04;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.object-card .object-name {
-  font-weight: 700;
-  color: #1a1a1a;
-  font-size: 16px;
-  margin: 0 0 6px 0;
-  line-height: 1.3;
-}
-.object-card .object-address {
-  font-size: 13px;
-  color: #64748b;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.object-card .card-meta { margin-bottom: 16px; }
-.object-card .card-actions {
-  padding-top: 14px;
-  border-top: 1px solid rgba(22, 143, 4, 0.12);
-}
-.status-badge { margin-left: auto; }
 
 /* ===== ПУСТОЕ / ЗАГРУЗОЧНОЕ СОСТОЯНИЕ ===== */
 .tab-empty, .tab-loading {
