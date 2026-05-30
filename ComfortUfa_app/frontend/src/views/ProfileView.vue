@@ -185,11 +185,11 @@
         </div>
       </div>
 
-      <!-- ===== ВКЛАДКИ: ДЭШБОРД ПОЛЬЗОВАТЕЛЯ ===== -->
+      <!-- ВКЛАДКИ: ДЭШБОРД ПОЛЬЗОВАТЕЛЯ -->
       <div class="dashboard-section">
         <TabView v-model:activeIndex="activeTabIndex" class="profile-tabs">
           
-          <!-- 🔹 Вкладка: Мои отзывы -->
+          <!-- Вкладка: Мои отзывы -->
           <TabPanel header="Мои отзывы">
             <div v-if="loadingReviews" class="tab-loading">
               <i class="pi pi-spin pi-spinner"></i> Загрузка отзывов...
@@ -212,19 +212,20 @@
                           <div class="object-icon-large">
                             <i :class="getTypeIcon(review.type_name || review.object_type)"></i>
                           </div>
+
                           <div class="object-meta-info">
                             <span class="object-type-badge">{{ review.type_name || review.object_type || 'Объект' }}</span>
                             <h4 class="object-name">{{ review.object_name }}</h4>
-                            <p v-if="review.object_address" class="object-address">
-                              <i class="pi pi-map-marker"></i> {{ review.object_address }}
+                            <!-- Адрес объекта: показываем адрес или "Адрес не указан" -->
+                            <p class="object-address">
+                              <i class="pi pi-map-marker"></i> {{ review.object_address || 'Адрес не указан' }}
                             </p>
                           </div>
+
                         </div>
                       </div>
-                      <Tag :value="review.category_name" 
-                           :severity="getCategorySeverity(review.category_name)" 
-                           size="small" 
-                           class="category-tag" />
+
+                      
                     </div>
                   </div>
                   
@@ -233,8 +234,8 @@
                   
                   <!-- Рейтинг + дата -->
                   <div class="card-meta">
-                    <span v-if="review.rating" class="rating-badge">
-                      <i class="pi pi-star-fill"></i> {{ review.rating }}/5
+                    <span class="rating-badge">
+                      <i class="pi pi-star-fill"></i> {{ (review.rating_avg ?? review.rating ?? 0).toFixed(1) }}
                     </span>
                     <span class="date"><i class="pi pi-calendar"></i> {{ formatDate(review.created_at) }}</span>
                   </div>
@@ -250,7 +251,7 @@
             </div>
           </TabPanel>
 
-          <!-- 🔹 Вкладка: Мои объекты (СТИЛИ КАК В ОТЗЫВАХ) -->
+          <!-- Вкладка: Мои объекты -->
           <TabPanel header="Мои объекты">
             <div v-if="loadingObjects" class="tab-loading">
               <i class="pi pi-spin pi-spinner"></i> Загрузка объектов...
@@ -265,40 +266,42 @@
             <div v-else class="cards-grid">
               <Card v-for="obj in userObjects" :key="obj.id_object" class="data-card review-card">
                 <template #content>
-                  <!-- Шапка: тип + статус модерации (как в отзывах) -->
+                  <!-- Шапка: тип + иконка -->
                   <div class="card-header">
                     <div class="object-info">
                       <div class="object-preview">
                         <div class="object-icon-large">
                           <i :class="getTypeIcon(obj.type_name)"></i>
                         </div>
+
                         <div class="object-meta-info">
                           <span class="object-type-badge">{{ obj.type_name || 'Объект' }}</span>
                           <h4 class="object-name">{{ obj.name }}</h4>
+                          <!-- Адрес объекта: используем obj.address -->
                           <p v-if="obj.address" class="object-address">
                             <i class="pi pi-map-marker"></i> {{ obj.address }}
                           </p>
                         </div>
+
                       </div>
                     </div>
-                    <!-- Статус модерации вместо категории -->
-                    <Tag :value="getStatusLabel(obj.moderation_status)" 
-                         :severity="getStatusSeverity(obj.moderation_status)" 
-                         size="small" 
-                         class="category-tag" />
                   </div>
                   
-                  <!-- Мета: дата + отзывы -->
+                  <!-- Рейтинг + дата -->
                   <div class="card-meta">
-                    <span><i class="pi pi-calendar"></i> {{ formatDate(obj.created_at) }}</span>
-                    <span v-if="obj.review_count"><i class="pi pi-comment"></i> {{ obj.review_count }} отзывов</span>
+                    <span class="rating-badge">
+                      <i class="pi pi-star-fill"></i> {{ (obj.rating_avg ?? 0).toFixed(1) }}
+                    </span>
+                    <span class="date">
+                      <i class="pi pi-calendar"></i> {{ formatDate(obj.created_at) }}
+                    </span>
                   </div>
                   
                   <!-- Действия -->
                   <div class="card-actions">
                     <Button icon="pi pi-map" label="На карте" text size="small" @click="showObjectOnMap(obj)" />
                     <Button icon="pi pi-info-circle" label="Подробнее" text size="small" @click="openObjectDetails(obj)" />
-                    <Button icon="pi pi-pencil" label="Редактировать" text size="small" @click="editObject(obj)" />
+                    <Button icon="pi pi-trash" label="Удалить" text severity="danger" size="small" @click="confirmDeleteObject(obj.id_object)" />
                   </div>
                 </template>
               </Card>
@@ -310,7 +313,7 @@
 
     </div>
 
-    <!-- ===== МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ОБЪЕКТА ===== -->
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ОБЪЕКТА -->
     <ObjectDetailsModal
       v-if="modalObject"
       :object="modalObject"
@@ -325,704 +328,773 @@
   </div>
 </template>
 
-<script>
-import axios from 'axios'
-import Card from 'primevue/card'
-import InputText from 'primevue/inputtext'
-import InputMask from 'primevue/inputmask'
-import Password from 'primevue/password'
-import Button from 'primevue/button'
-import Tag from 'primevue/tag'
-import Divider from 'primevue/divider'
-import TabView from 'primevue/tabview'
-import TabPanel from 'primevue/tabpanel'
-import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
 
-export default {
-  name: 'ProfileView',
-  components: { 
-    Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, ObjectDetailsModal
-  },
-  
-  data() {
-    return {
-      // Профиль
-      profile: {
-        id_user: null,
-        email: '',
-        nickname: '',
-        phone: '',
-        role_name: '',
-        created_at: null
-      },
-      
-      // Активность
-      activity: {
-        total_reviews: 0,
-        total_favorites: 0,
-        total_objects_added: 0
-      },
-      
-      // Форма редактирования
-      form: {
-        nickname: '',
-        email: '',
-        phone: '',
-        current_password: '',
-        new_password: ''
-      },
-      
-      errors: {},
-      isEditing: false,
-      saving: false,
-      loading: true,
-      loadingActivity: true,
-      
-      // Данные для вкладок
-      userReviews: [],
-      userObjects: [],
-      loadingReviews: false,
-      loadingObjects: false,
-      
-      // Активная вкладка
-      activeTabIndex: 0,
-      
-      // Модальное окно
-      modalObject: null,
-      
-      // 🔥 Отзыв для редактирования
-      reviewToEdit: null,
-      
-      // 🔥 НАСТРОЙКА СКРОЛЛА (регулируй это значение!)
-      // 0 = самый верх, 100 = отступ 100px, 200 = отступ 200px и т.д.
-      mapScrollPosition: 165
-    }
-  },
-  
-  async mounted() {
-    const token = localStorage.getItem('auth_token')
-    if (!token) {
-      this.$router.push('/auth')
-      return
-    }
-    
-    await Promise.all([
-      this.fetchProfile(),
-      this.fetchActivity(),
-      this.fetchUserReviews(),
-      this.fetchUserObjects()
-    ])
-  },
-  
-  methods: {
-    // ===== ЗАГРУЗКА ДАННЫХ =====
-    
-    async fetchProfile() {
-      try {
-        this.loading = true
-        const response = await axios.get('http://localhost:8000/api/users/me', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-        })
-        this.profile = response.data
-        this.form = {
-          nickname: response.data.nickname,
-          email: response.data.email,
-          phone: response.data.phone,
-          current_password: '',
-          new_password: ''
-        }
-      } catch (error) {
-        console.error('Ошибка загрузки профиля:', error)
-        if (error.response?.status === 401) {
-          this.handleLogout()
-          return
-        }
-        this.$toast?.add({
-          severity: 'error',
-          summary: 'Ошибка',
-          detail: 'Не удалось загрузить данные профиля',
-          life: 3000,
-          styleClass: 'my-error-toast'
-        })
-      } finally {
-        this.loading = false
-      }
+<script>
+  import axios from 'axios'
+  import Card from 'primevue/card'
+  import InputText from 'primevue/inputtext'
+  import InputMask from 'primevue/inputmask'
+  import Password from 'primevue/password'
+  import Button from 'primevue/button'
+  import Tag from 'primevue/tag'
+  import Divider from 'primevue/divider'
+  import TabView from 'primevue/tabview'
+  import TabPanel from 'primevue/tabpanel'
+  import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
+
+  export default {
+    name: 'ProfileView',
+    components: { 
+      Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, ObjectDetailsModal
     },
     
-    async fetchActivity() {
-      try {
-        this.loadingActivity = true
-        const response = await axios.get('http://localhost:8000/api/users/me/activity', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-        })
-        this.activity = response.data
-      } catch (error) {
-        console.error('Ошибка загрузки активности:', error)
-        this.activity = {
+    data() {
+      return {
+        // Данные профиля пользователя
+        profile: {
+          id_user: null,
+          email: '',
+          nickname: '',
+          phone: '',
+          role_name: '',
+          created_at: null
+        },
+        
+        // Статистика активности
+        activity: {
           total_reviews: 0,
           total_favorites: 0,
           total_objects_added: 0
-        }
-      } finally {
-        this.loadingActivity = false
-      }
-    },
-    
-    async fetchUserReviews() {
-      try {
-        this.loadingReviews = true
-        const response = await axios.get('http://localhost:8000/api/users/me/reviews', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-        })
+        },
         
-        // 🔥 НОРМАЛИЗАЦИЯ: приводим данные к единому формату
-        this.userReviews = response.data.map(review => ({
-          ...review,
-          // Копируем поля из вложенного object на верхний уровень
-          id_object: review.object?.id_object,
-          object_name: review.object?.name,
-          object_type: review.object?.type,
-          type_name: review.object?.type,  // ← для совместимости с шаблоном
-          object_address: review.object?.address,
-          coords: review.object?.coords,
-          latitude: review.object?.coords?.[0],
-          longitude: review.object?.coords?.[1],
-          // 🔥 Рейтинг для балуна
-          rating_avg: review.object?.rating_avg,
-          rating_count: review.object?.rating_count
-        }))
+        // Форма для редактирования профиля
+        form: {
+          nickname: '',
+          email: '',
+          phone: '',
+          current_password: '',
+          new_password: ''
+        },
         
-        console.log('📦 Нормализованные отзывы:', this.userReviews)
-      } catch (error) {
-        console.error('Ошибка загрузки отзывов:', error)
-        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить отзывы', life: 3000, styleClass: 'my-error-toast' })
-      } finally {
-        this.loadingReviews = false
+        errors: {},
+        isEditing: false,
+        saving: false,
+        loading: true,
+        loadingActivity: true,
+        
+        // Данные для вкладок
+        userReviews: [],
+        userObjects: [],
+        loadingReviews: false,
+        loadingObjects: false,
+        
+        // Активная вкладка
+        activeTabIndex: 0,
+        
+        // Модальное окно
+        modalObject: null,
+        
+        // Отзыв для редактирования
+        reviewToEdit: null,
+        
+        // Настройка позиции скролла при переходе на карту
+        mapScrollPosition: 165
       }
     },
     
-    async fetchUserObjects() {
-      try {
-        this.loadingObjects = true
-        const response = await axios.get('http://localhost:8000/api/users/me/objects', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-        })
-        this.userObjects = response.data
-      } catch (error) {
-        console.error('Ошибка загрузки объектов:', error)
-        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объекты', life: 3000, styleClass: 'my-error-toast' })
-      } finally {
-        this.loadingObjects = false
-      }
-    },
-    
-    // ===== РЕДАКТИРОВАНИЕ ПРОФИЛЯ =====
-    
-    startEditing() {
-      this.isEditing = true
-      this.errors = {}
-      this.form.current_password = ''
-      this.form.new_password = ''
-    },
-    
-    cancelEditing() {
-      this.isEditing = false
-      this.errors = {}
-      this.form = {
-        nickname: this.profile.nickname,
-        email: this.profile.email,
-        phone: this.profile.phone,
-        current_password: '',
-        new_password: ''
-      }
-    },
-    
-    validateForm() {
-      this.errors = {}
-      
-      if (!this.form.nickname?.trim()) {
-        this.errors.nickname = 'Введите никнейм'
-      } else if (this.form.nickname.length < 3) {
-        this.errors.nickname = 'Минимум 3 символа'
-      } else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
-        this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
-      }
-      
-      if (!this.form.email?.trim()) {
-        this.errors.email = 'Введите email'
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.form.email)) {
-        this.errors.email = 'Некорректный email'
-      }
-      
-      if (this.form.new_password && !this.form.current_password) {
-        this.errors.current_password = 'Введите текущий пароль для подтверждения'
-      }
-      
-      return Object.keys(this.errors).length === 0
-    },
-    
-    async saveProfile() {
-      if (!this.validateForm()) {
-        this.$toast?.add({
-          severity: 'warn',
-          summary: 'Проверьте форму',
-          detail: 'Исправьте ошибки в полях',
-          life: 3000,
-          styleClass: 'my-big-toast'
-        })
+    async mounted() {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.$router.push('/auth')
         return
       }
       
-      this.saving = true
-      
-      try {
-        const payload = {}
-        
-        if (this.form.nickname !== this.profile.nickname) {
-          payload.nickname = this.form.nickname.trim()
-        }
-        if (this.form.email !== this.profile.email) {
-          payload.email = this.form.email.trim().toLowerCase()
-        }
-        if (this.form.phone !== this.profile.phone) {
-          payload.phone = this.form.phone || null
-        }
-        if (this.form.current_password) {
-          payload.current_password = this.form.current_password
-        }
-        if (this.form.new_password) {
-          payload.new_password = this.form.new_password
-        }
-        
-        if (Object.keys(payload).length === 0) {
-          this.$toast?.add({
-            severity: 'info',
-            summary: 'Информация',
-            detail: 'Нет изменений для сохранения',
-            life: 2000,
-            styleClass: 'my-info-toast'
+      // Загружаем все данные параллельно
+      await Promise.all([
+        this.fetchProfile(),
+        this.fetchActivity(),
+        this.fetchUserReviews(),
+        this.fetchUserObjects()
+      ])
+    },
+    
+    methods: {
+      // Загрузка данных профиля
+      async fetchProfile() {
+        try {
+          this.loading = true
+          const response = await axios.get('http://localhost:8000/api/users/me', {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
           })
-          this.cancelEditing()
-          return
-        }
-        
-        const response = await axios.put(
-          'http://localhost:8000/api/users/me',
-          new URLSearchParams(payload),
-          {
-            headers: { 
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-              'Content-Type': 'application/x-www-form-urlencoded'
-            }
+          this.profile = response.data
+          this.form = {
+            nickname: response.data.nickname,
+            email: response.data.email,
+            phone: response.data.phone,
+            current_password: '',
+            new_password: ''
           }
-        )
-        
-        this.profile = response.data
-        localStorage.setItem('user', JSON.stringify({
-          id: response.data.id_user,
-          nickname: response.data.nickname,
-          role: response.data.role_name
-        }))
-        
-        window.dispatchEvent(new CustomEvent('user-updated', {
-          detail: { user: response.data }
-        }))
-        
-        this.isEditing = false
-        this.$toast?.add({
-          severity: 'success',
-          summary: 'Успешно',
-          detail: 'Данные профиля обновлены',
-          life: 3000,
-          styleClass: 'my-success-toast'
-        })
-        
-      } catch (error) {
-        console.error('Ошибка сохранения:', error)
-        const message = error.response?.data?.detail || 'Не удалось сохранить изменения'
-        this.$toast?.add({
-          severity: 'error',
-          summary: 'Ошибка',
-          detail: message,
-          life: 4000,
-          styleClass: 'my-error-toast'
-        })
-      } finally {
-        this.saving = false
-      }
-    },
-    
-    // ===== ВКЛАДКИ: УПРАВЛЕНИЕ =====
-    
-    switchToTab(index) {
-      this.activeTabIndex = index
-      this.$nextTick(() => {
-        const dashboard = document.querySelector('.dashboard-section')
-        if (dashboard) {
-          const rect = dashboard.getBoundingClientRect()
-          const offsetTop = rect.top + window.pageYOffset - 150
-          
-          window.scrollTo({
-            top: offsetTop,
-            behavior: 'smooth'
-          })
-        }
-      })
-    },
-    
-    goToFavorites() {
-      this.$router.push('/favorites')
-    },
-    
-    // ===== РАБОТА С ОБЪЕКТАМИ И ОТЗЫВАМИ =====
-    
-    async openObjectFromReview(review) {
-      console.log('🔍 openObjectFromReview — отзыв:', review)
-      
-      const objectId = review.id_object || review.object?.id_object || review.object_id
-      
-      if (objectId) {
-        try {
-          console.log(`📡 Запрос объекта по ID: ${objectId}`)
-          const response = await axios.get(`http://localhost:8000/api/objects/${objectId}`)
-          console.log('✅ Объект найден:', response.data)
-          this.modalObject = response.data
-          return
         } catch (error) {
-          console.error(`❌ Ошибка загрузки объекта по ID ${objectId}:`, error)
-        }
-      }
-      
-      const objectName = review.object_name || review.object?.name
-      if (objectName) {
-        try {
-          console.log(`🔎 Поиск объекта по названию: "${objectName}"`)
-          const response = await axios.get('http://localhost:8000/api/objects', {
-            params: { 
-              search: objectName, 
-              limit: 1,
-              type: review.object_type || review.object?.type
-            }
-          })
-          
-          if (response.data && response.data.length > 0) {
-            console.log('✅ Объект найден по названию:', response.data[0])
-            this.modalObject = response.data[0]
+          console.error('Ошибка загрузки профиля:', error)
+          if (error.response?.status === 401) {
+            this.handleLogout()
             return
           }
-        } catch (error) {
-          console.error('❌ Ошибка поиска объекта по названию:', error)
-        }
-      }
-      
-      console.error('❌ Не удалось найти объект для отзыва:', review)
-      this.$toast?.add({ 
-        severity: 'error', 
-        summary: 'Ошибка', 
-        detail: 'Не удалось найти объект. Возможно, он был удалён.', 
-        life: 4000, 
-        styleClass: 'my-error-toast' 
-      })
-    },
-    
-    async openObjectDetails(obj) {
-      try {
-        const response = await axios.get(`http://localhost:8000/api/objects/${obj.id_object}`)
-        this.modalObject = response.data
-      } catch (error) {
-        console.error('Ошибка загрузки объекта:', error)
-        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объект', life: 3000, styleClass: 'my-error-toast' })
-      }
-    },
-    
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: переход на карту с регулируемым скроллом
-    async showOnMap(review) {
-      console.log('🗺️ showOnMap — исходный отзыв:', review)
-      
-      // 🔥 Читаем ID объекта (обязательно!)
-      const objectId = review.id_object || review.object?.id_object || review.object_id
-      
-      if (!objectId) {
-        console.error('❌ Нет ID объекта!')
-        this.$toast?.add({
-          severity: 'error',
-          summary: 'Ошибка',
-          detail: 'Не удалось найти ID объекта',
-          life: 3000,
-          styleClass: 'my-error-toast'
-        })
-        return
-      }
-      
-      // 🔥 Пробуем прочитать координаты из отзыва
-      let coords = review.coords || review.object?.coords
-      if (!coords && review.latitude && review.longitude) {
-        coords = [review.latitude, review.longitude]
-      }
-      
-      // 🔥 Если координат нет — загружаем полный объект с бэкенда
-      if (!coords) {
-        console.log(`📡 Загружаем объект ${objectId} для получения координат...`)
-        try {
-          const response = await axios.get(`http://localhost:8000/api/objects/${objectId}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
-          })
-          
-          const fullObject = response.data
-          console.log('✅ Объект загружен:', fullObject)
-          
-          coords = fullObject.coords || [fullObject.latitude, fullObject.longitude]
-          
-          // Обновляем данные для передачи
-          review.object_name = fullObject.name
-          review.object_type = fullObject.type_name
-          review.object_address = fullObject.address
-          review.rating_avg = fullObject.rating_avg
-          review.rating_count = fullObject.rating_count
-          
-        } catch (error) {
-          console.error('❌ Ошибка загрузки объекта:', error)
           this.$toast?.add({
             severity: 'error',
             summary: 'Ошибка',
-            detail: 'Не удалось загрузить данные объекта',
+            detail: 'Не удалось загрузить данные профиля',
+            life: 3000,
+            styleClass: 'my-error-toast'
+          })
+        } finally {
+          this.loading = false
+        }
+      },
+      
+      // Загрузка статистики активности
+      async fetchActivity() {
+        try {
+          this.loadingActivity = true
+          const response = await axios.get('http://localhost:8000/api/users/me/activity', {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+          })
+          this.activity = response.data
+        } catch (error) {
+          console.error('Ошибка загрузки активности:', error)
+          this.activity = {
+            total_reviews: 0,
+            total_favorites: 0,
+            total_objects_added: 0
+          }
+        } finally {
+          this.loadingActivity = false
+        }
+      },
+      
+      async fetchUserReviews() {
+        try {
+          this.loadingReviews = true
+          const response = await axios.get('http://localhost:8000/api/users/me/reviews', {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+          })
+          
+          const reviews = response.data.map(review => ({
+            ...review,
+            id_object: review.object?.id_object,
+            object_name: review.object?.name,
+            object_type: review.object?.type,
+            type_name: review.object?.type,
+            object_address: null,  
+            coords: review.object?.coords,
+            latitude: review.object?.coords?.[0],
+            longitude: review.object?.coords?.[1],
+            rating_avg: review.object?.rating_avg,
+            rating_count: review.object?.rating_count
+          }))
+          
+          const reviewsWithAddresses = await Promise.all(
+            reviews.map(async (review) => {
+              if (review.id_object && !review.object?.address) {
+                try {
+                  const response = await axios.get('http://localhost:8000/api/objects/' + review.id_object)
+                  const fullObject = response.data
+                  
+                  
+                  return {
+                    ...review,
+                    object_address: fullObject.address || 'Адрес не указан',
+                    coords: fullObject.coords || review.coords,
+                    latitude: fullObject.coords?.[0] || review.latitude,
+                    longitude: fullObject.coords?.[1] || review.longitude,
+                    rating_avg: fullObject.rating_avg || review.rating_avg,
+                    rating_count: fullObject.rating_count || review.rating_count
+                  }
+                } catch (error) {
+                  console.error('Не удалось загрузить объект ' + review.id_object + ':', error)
+                  return {
+                    ...review,
+                    object_address: 'Адрес не указан'
+                  }
+                }
+              }
+              
+              return {
+                ...review,
+                object_address: review.object?.address || review.address || 'Адрес не указан'
+              }
+            })
+          )
+          
+          this.userReviews = reviewsWithAddresses
+        } catch (error) {
+          console.error('Ошибка загрузки отзывов:', error)
+          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить отзывы', life: 3000, styleClass: 'my-error-toast' })
+        } finally {
+          this.loadingReviews = false
+        }
+      },
+      
+      // Загрузка объектов пользователя
+      async fetchUserObjects() {
+        try {
+          this.loadingObjects = true
+          const response = await axios.get('http://localhost:8000/api/users/me/objects', {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+          })
+          
+          // Обработка данных: нормализация полей
+          this.userObjects = response.data.map(obj => ({
+            ...obj,
+            type_name: obj.type_name || obj.type || 'Объект',
+            rating_avg: obj.rating_avg ?? obj.rating ?? null,
+            rating_count: obj.rating_count ?? 0
+          }))
+          
+        } catch (error) {
+          console.error('Ошибка загрузки объектов:', error)
+          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объекты', life: 3000, styleClass: 'my-error-toast' })
+        } finally {
+          this.loadingObjects = false
+        }
+      },
+      
+      // Начало редактирования профиля
+      startEditing() {
+        this.isEditing = true
+        this.errors = {}
+        this.form.current_password = ''
+        this.form.new_password = ''
+      },
+      
+      // Отмена редактирования
+      cancelEditing() {
+        this.isEditing = false
+        this.errors = {}
+        this.form = {
+          nickname: this.profile.nickname,
+          email: this.profile.email,
+          phone: this.profile.phone,
+          current_password: '',
+          new_password: ''
+        }
+      },
+      
+      // Валидация формы редактирования
+      validateForm() {
+        this.errors = {}
+        
+        if (!this.form.nickname?.trim()) {
+          this.errors.nickname = 'Введите никнейм'
+        } else if (this.form.nickname.length < 3) {
+          this.errors.nickname = 'Минимум 3 символа'
+        } else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
+          this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
+        }
+        
+        if (!this.form.email?.trim()) {
+          this.errors.email = 'Введите email'
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.form.email)) {
+          this.errors.email = 'Некорректный email'
+        }
+        
+        if (this.form.new_password && !this.form.current_password) {
+          this.errors.current_password = 'Введите текущий пароль для подтверждения'
+        }
+        
+        return Object.keys(this.errors).length === 0
+      },
+      
+      // Сохранение изменений профиля
+      async saveProfile() {
+        if (!this.validateForm()) {
+          this.$toast?.add({
+            severity: 'warn',
+            summary: 'Проверьте форму',
+            detail: 'Исправьте ошибки в полях',
+            life: 3000,
+            styleClass: 'my-big-toast'
+          })
+          return
+        }
+        
+        this.saving = true
+        
+        try {
+          const payload = {}
+          
+          if (this.form.nickname !== this.profile.nickname) {
+            payload.nickname = this.form.nickname.trim()
+          }
+          if (this.form.email !== this.profile.email) {
+            payload.email = this.form.email.trim().toLowerCase()
+          }
+          if (this.form.phone !== this.profile.phone) {
+            payload.phone = this.form.phone || null
+          }
+          if (this.form.current_password) {
+            payload.current_password = this.form.current_password
+          }
+          if (this.form.new_password) {
+            payload.new_password = this.form.new_password
+          }
+          
+          if (Object.keys(payload).length === 0) {
+            this.$toast?.add({
+              severity: 'info',
+              summary: 'Информация',
+              detail: 'Нет изменений для сохранения',
+              life: 2000,
+              styleClass: 'my-info-toast'
+            })
+            this.cancelEditing()
+            return
+          }
+          
+          const response = await axios.put(
+            'http://localhost:8000/api/users/me',
+            new URLSearchParams(payload),
+            {
+              headers: { 
+                'Authorization': 'Bearer ' + localStorage.getItem('auth_token'),
+                'Content-Type': 'application/x-www-form-urlencoded'
+              }
+            }
+          )
+          
+          this.profile = response.data
+          localStorage.setItem('user', JSON.stringify({
+            id: response.data.id_user,
+            nickname: response.data.nickname,
+            role: response.data.role_name
+          }))
+          
+          window.dispatchEvent(new CustomEvent('user-updated', {
+            detail: { user: response.data }
+          }))
+          
+          this.isEditing = false
+          this.$toast?.add({
+            severity: 'success',
+            summary: 'Успешно',
+            detail: 'Данные профиля обновлены',
+            life: 3000,
+            styleClass: 'my-success-toast'
+          })
+          
+        } catch (error) {
+          console.error('Ошибка сохранения:', error)
+          const message = error.response?.data?.detail || 'Не удалось сохранить изменения'
+          this.$toast?.add({
+            severity: 'error',
+            summary: 'Ошибка',
+            detail: message,
+            life: 4000,
+            styleClass: 'my-error-toast'
+          })
+        } finally {
+          this.saving = false
+        }
+      },
+      
+      // Переключение вкладки с прокруткой
+      switchToTab(index) {
+        this.activeTabIndex = index
+        this.$nextTick(() => {
+          const dashboard = document.querySelector('.dashboard-section')
+          if (dashboard) {
+            const rect = dashboard.getBoundingClientRect()
+            const offsetTop = rect.top + window.pageYOffset - 150
+            
+            window.scrollTo({
+              top: offsetTop,
+              behavior: 'smooth'
+            })
+          }
+        })
+      },
+      
+      // Переход в избранное
+      goToFavorites() {
+        this.$router.push('/favorites')
+      },
+      
+      // Открытие объекта из отзыва
+      async openObjectFromReview(review) {
+        const objectId = review.id_object || review.object?.id_object || review.object_id
+        
+        if (objectId) {
+          try {
+            const response = await axios.get('http://localhost:8000/api/objects/' + objectId)
+            this.modalObject = response.data
+            return
+          } catch (error) {
+            console.error('Ошибка загрузки объекта по ID ' + objectId + ':', error)
+          }
+        }
+        
+        const objectName = review.object_name || review.object?.name
+        if (objectName) {
+          try {
+            const response = await axios.get('http://localhost:8000/api/objects', {
+              params: { 
+                search: objectName, 
+                limit: 1,
+                type: review.object_type || review.object?.type
+              }
+            })
+            
+            if (response.data && response.data.length > 0) {
+              this.modalObject = response.data[0]
+              return
+            }
+          } catch (error) {
+            console.error('Ошибка поиска объекта по названию:', error)
+          }
+        }
+        
+        this.$toast?.add({ 
+          severity: 'error', 
+          summary: 'Ошибка', 
+          detail: 'Не удалось найти объект. Возможно, он был удалён.', 
+          life: 4000, 
+          styleClass: 'my-error-toast' 
+        })
+      },
+      
+      // Открытие деталей объекта
+      async openObjectDetails(obj) {
+        try {
+          const response = await axios.get('http://localhost:8000/api/objects/' + obj.id_object)
+          this.modalObject = response.data
+        } catch (error) {
+          console.error('Ошибка загрузки объекта:', error)
+          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объект', life: 3000, styleClass: 'my-error-toast' })
+        }
+      },
+      
+      // Переход на карту из отзыва
+      async showOnMap(review) {
+        const objectId = review.id_object || review.object?.id_object || review.object_id
+        
+        if (!objectId) {
+          this.$toast?.add({
+            severity: 'error',
+            summary: 'Ошибка',
+            detail: 'Не удалось найти ID объекта',
             life: 3000,
             styleClass: 'my-error-toast'
           })
           return
         }
-      }
-      
-      // 🔥 Читаем остальные данные
-      const objectName = review.object_name || review.object?.name
-      const objectType = review.object_type || review.object?.type || review.type_name
-      const objectAddress = review.object_address || review.object?.address
-      const ratingAvg = review.rating_avg || review.object?.rating_avg
-      const ratingCount = review.rating_count || review.object?.rating_count
-      
-      // 🔥 Отладка
-      console.log('🗺️ showOnMap params:', {
-        focus: coords ? `${coords[0]},${coords[1]}` : null,
-        id: objectId,
-        type: objectType,
-        name: objectName,
-        address: objectAddress,
-        rating_avg: ratingAvg,
-        rating_count: ratingCount
-      })
-      
-      // 🔥 Переход на карту (ждем завершения!)
-      await this.$router.push({
-        path: '/map',
-        query: { 
-          focus: coords ? `${coords[0]},${coords[1]}` : null,
-          zoom: 17,
-          id: objectId,
-          type: objectType,
-          name: objectName,
-          address: objectAddress || '',
-          rating_avg: ratingAvg,
-          rating_count: ratingCount
+        
+        let coords = review.coords || review.object?.coords
+        if (!coords && review.latitude && review.longitude) {
+          coords = [review.latitude, review.longitude]
         }
-      })
-      
-      // 🔥 Скролл ПОСЛЕ перехода (с регулируемой позицией!)
-      this.$nextTick(() => {
-        setTimeout(() => {
-          // 🔧 МЕНЯЙ ЭТО ЗНАЧЕНИЕ: 0 = верх, 100 = отступ 100px, и т.д.
-          window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
-        }, 100)
-      })
-    },
-    
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: переход из модалки с регулируемым скроллом
-    async showOnMapFromModal(obj) {
-      await this.$router.push({
-        path: '/map',
-        query: { 
-          focus: `${obj.latitude},${obj.longitude}`,
-          zoom: 17,
-          id: obj.id_object,
-          type: obj.type_name,
-          name: obj.name,
-          address: obj.address,
-          rating_avg: obj.rating_avg,
-          rating_count: obj.rating_count
+        
+        if (!coords) {
+          try {
+            const response = await axios.get('http://localhost:8000/api/objects/' + objectId, {
+              headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+            })
+            
+            const fullObject = response.data
+            coords = fullObject.coords || [fullObject.latitude, fullObject.longitude]
+            
+            review.object_name = fullObject.name
+            review.object_type = fullObject.type_name
+            review.object_address = fullObject.address
+            review.rating_avg = fullObject.rating_avg
+            review.rating_count = fullObject.rating_count
+            
+          } catch (error) {
+            console.error('Ошибка загрузки объекта:', error)
+            this.$toast?.add({
+              severity: 'error',
+              summary: 'Ошибка',
+              detail: 'Не удалось загрузить данные объекта',
+              life: 3000,
+              styleClass: 'my-error-toast'
+            })
+            return
+          }
         }
-      })
-      
-      // 🔥 Скролл ПОСЛЕ перехода (с регулируемой позицией!)
-      this.$nextTick(() => {
-        setTimeout(() => {
-          window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
-        }, 100)
-      })
-    },
-    
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: переход из вкладки "Мои объекты" с регулируемым скроллом
-    async showObjectOnMap(obj) {
-      await this.$router.push({
-        path: '/map',
-        query: { 
-          focus: `${obj.latitude},${obj.longitude}`,
-          zoom: 17,
-          id: obj.id_object,
-          type: obj.type_name,
-          name: obj.name,
-          address: obj.address,
-          rating_avg: obj.rating_avg,
-          rating_count: obj.rating_count
-        }
-      })
-      
-      // 🔥 Скролл ПОСЛЕ перехода (с регулируемой позицией!)
-      this.$nextTick(() => {
-        setTimeout(() => {
-          window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
-        }, 100)
-      })
-    },
-    
-    // 🔥 РЕДАКТИРОВАНИЕ ОТЗЫВА
-    async editReview(review) {
-      console.log('✏️ editReview вызван с отзывом:', review)
-      
-      this.reviewToEdit = { ...review }
-      await this.openObjectFromReview(review)
-      
-      if (!this.modalObject) {
-        console.error('❌ Объект не загрузился, модалка не откроется')
-        return
-      }
-      
-      this.$nextTick(() => {
-        console.log('✅ $nextTick: модалка должна открыться с формой редактирования')
-      })
-    },
-    
-    // 🔥 УДАЛЕНИЕ ОТЗЫВА
-    async confirmDeleteReview(reviewId) {
-      if (!confirm('Вы уверены, что хотите удалить этот отзыв?')) return
-      
-      try {
-        const response = await axios.delete(`http://localhost:8000/api/reviews/${reviewId}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
+        
+        const objectName = review.object_name || review.object?.name
+        const objectType = review.object_type || review.object?.type || review.type_name
+        const objectAddress = review.object_address || review.object?.address
+        const ratingAvg = review.rating_avg || review.object?.rating_avg
+        const ratingCount = review.rating_count || review.object?.rating_count
+        
+        await this.$router.push({
+          path: '/map',
+          query: { 
+            focus: coords ? coords[0] + ',' + coords[1] : null,
+            zoom: 17,
+            id: objectId,
+            type: objectType,
+            name: objectName,
+            address: objectAddress || '',
+            rating_avg: ratingAvg,
+            rating_count: ratingCount
+          }
         })
         
-        if (response.data?.success) {
-          this.userReviews = this.userReviews.filter(r => r.id_review !== reviewId)
+        // Прокрутка после перехода
+        this.$nextTick(() => {
+          setTimeout(() => {
+            if (this.mapScrollPosition >= 0) {
+              window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+            }
+          }, 100)
+        })
+      },
+      
+      // Переход на карту из модалки
+      async showOnMapFromModal(obj) {
+        await this.$router.push({
+          path: '/map',
+          query: { 
+            focus: obj.latitude + ',' + obj.longitude,
+            zoom: 17,
+            id: obj.id_object,
+            type: obj.type_name,
+            name: obj.name,
+            address: obj.address,
+            rating_avg: obj.rating_avg,
+            rating_count: obj.rating_count
+          }
+        })
+        
+        this.$nextTick(() => {
+          setTimeout(() => {
+            if (this.mapScrollPosition >= 0) {
+              window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+            }
+          }, 100)
+        })
+      },
+      
+      // Переход на карту из вкладки "Мои объекты"
+      async showObjectOnMap(obj) {
+        await this.$router.push({
+          path: '/map',
+          query: { 
+            focus: obj.latitude + ',' + obj.longitude,
+            zoom: 17,
+            id: obj.id_object,
+            type: obj.type_name,
+            name: obj.name,
+            address: obj.address,
+            rating_avg: obj.rating_avg,
+            rating_count: obj.rating_count
+          }
+        })
+        
+        this.$nextTick(() => {
+          setTimeout(() => {
+            if (this.mapScrollPosition >= 0) {
+              window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+            }
+          }, 100)
+        })
+      },
+      
+      // Редактирование отзыва
+      async editReview(review) {
+        this.reviewToEdit = { ...review }
+        await this.openObjectFromReview(review)
+        
+        if (!this.modalObject) {
+          return
+        }
+        
+        this.$nextTick(() => {
+          console.log('Модалка должна открыться с формой редактирования')
+        })
+      },
+      
+      // Удаление отзыва
+      async confirmDeleteReview(reviewId) {
+        if (!confirm('Вы уверены, что хотите удалить этот отзыв?')) return
+        
+        try {
+          const response = await axios.delete('http://localhost:8000/api/reviews/' + reviewId, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+          })
+          
+          if (response.data?.success) {
+            this.userReviews = this.userReviews.filter(r => r.id_review !== reviewId)
+            this.$toast?.add({ 
+              severity: 'success', 
+              summary: 'Удалено', 
+              detail: 'Отзыв успешно удалён', 
+              life: 2000,
+              styleClass: 'my-success-toast'
+            })
+          }
+        } catch (error) {
+          console.error('Ошибка удаления:', error)
+          const message = error.response?.data?.detail || 'Не удалось удалить отзыв'
+          this.$toast?.add({ 
+            severity: 'error', 
+            summary: 'Ошибка', 
+            detail: message, 
+            life: 3000,
+            styleClass: 'my-error-toast'
+          })
+        }
+      },
+      
+      // Заглушка для редактирования объекта
+      editObject(obj) {
+        this.$toast?.add({ 
+          severity: 'info', 
+          summary: 'Редактирование', 
+          detail: 'Функция редактирования объекта в разработке', 
+          life: 3000,
+          styleClass: 'my-info-toast'
+        })
+      },
+      
+      // Удаление объекта
+      async confirmDeleteObject(objectId) {
+        if (!confirm('Вы уверены, что хотите удалить этот объект? Все связанные отзывы также будут удалены.')) return
+        
+        try {
+          const response = await axios.delete('http://localhost:8000/api/objects/' + objectId, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+          })
+          
+          if (response.data?.success || response.status === 200) {
+            this.userObjects = this.userObjects.filter(o => o.id_object !== objectId)
+            this.$toast?.add({ 
+              severity: 'success', 
+              summary: 'Удалено', 
+              detail: 'Объект успешно удалён', 
+              life: 2000,
+              styleClass: 'my-success-toast'
+            })
+          }
+        } catch (error) {
+          console.error('Ошибка удаления:', error)
+          const message = error.response?.data?.detail || 'Не удалось удалить объект'
+          this.$toast?.add({ 
+            severity: 'error', 
+            summary: 'Ошибка', 
+            detail: message, 
+            life: 3000,
+            styleClass: 'my-error-toast'
+          })
+        }
+      },
+      
+      // Обработка отправки отзыва из модалки
+      onReviewSubmitted(result) {
+        if (result.success) {
+          this.fetchUserReviews()
+          this.reviewToEdit = null
+        }
+      },
+      
+      // Обработка обновления отзыва
+      onReviewUpdated(result) {
+        if (result.success) {
+          const idx = this.userReviews.findIndex(r => r.id_review === result.id_review)
+          if (idx !== -1) {
+            this.userReviews[idx] = { ...this.userReviews[idx], ...result }
+          }
           this.$toast?.add({ 
             severity: 'success', 
-            summary: 'Удалено', 
-            detail: 'Отзыв успешно удалён', 
+            summary: 'Обновлено', 
+            detail: 'Отзыв успешно изменён', 
             life: 2000,
             styleClass: 'my-success-toast'
           })
+          this.reviewToEdit = null
         }
-      } catch (error) {
-        console.error('Ошибка удаления:', error)
-        const message = error.response?.data?.detail || 'Не удалось удалить отзыв'
-        this.$toast?.add({ 
-          severity: 'error', 
-          summary: 'Ошибка', 
-          detail: message, 
-          life: 3000,
-          styleClass: 'my-error-toast'
-        })
-      }
-    },
-    
-    editObject(obj) {
-      this.$toast?.add({ 
-        severity: 'info', 
-        summary: 'Редактирование', 
-        detail: 'Функция редактирования объекта в разработке', 
-        life: 3000,
-        styleClass: 'my-info-toast'
-      })
-    },
-    
-    // 🔥 Обработка отправки/обновления отзыва из модалки
-    onReviewSubmitted(result) {
-      if (result.success) {
-        this.fetchUserReviews()
-        this.reviewToEdit = null
-      }
-    },
-    
-    // 🔥 Обработка обновления отзыва
-    onReviewUpdated(result) {
-      if (result.success) {
-        const idx = this.userReviews.findIndex(r => r.id_review === result.id_review)
-        if (idx !== -1) {
-          this.userReviews[idx] = { ...this.userReviews[idx], ...result }
+      },
+      
+      // Получение иконки по типу объекта
+      getTypeIcon(typeName) {
+        const map = {
+          'камера видеонаблюдения': 'pi pi-video', 
+          'кафе': 'pi pi-map-marker', 
+          'фонарь': 'pi pi-lightbulb',
+          'скамейка': 'pi pi-map-marker', 
+          'парк': 'pi pi-map-marker', 
+          'беседка': 'pi pi-building-columns',
+          'остановка': 'pi pi-car', 
+          'детская площадка': 'pi pi-face-smile',
+          'спортивная площадка': 'pi pi-bolt',
+          'урна': 'pi pi-trash',
+          'мусорный контейнер': 'pi pi-trash',
+          'парковка': 'pi pi-car',
+          'пешеходный переход': 'pi pi-directions-alt',
+          'памятник': 'pi pi-flag',
+          'информационный стенд': 'pi pi-info-circle',
+          'цветник': 'pi pi-star',
+          'дорожка': 'pi pi-arrow-right',
+          'ограждение': 'pi pi-th-large'
         }
+        
+        if (!typeName) {
+          return 'pi pi-map-marker'
+        }
+        
+        const key = Object.keys(map).find(k => typeName.toLowerCase().includes(k))
+        const icon = map[key] || 'pi pi-map-marker'
+        return icon
+      },
+      
+      // Определение цвета тега по категории
+      getCategorySeverity(category) {
+        const map = {
+          'проблема': 'danger', 'предложение': 'info', 'похвала': 'success', 'вопрос': 'warn',
+          'problem': 'danger', 'suggestion': 'info', 'praise': 'success'
+        }
+        return map[category?.toLowerCase()] || 'secondary'
+      },
+      
+      // Получение текста статуса модерации
+      getStatusLabel(status) {
+        const map = { 'approved': 'Одобрен', 'pending': 'На модерации', 'rejected': 'Отклонён' }
+        return map[status] || status
+      },
+      
+      // Определение цвета тега статуса
+      getStatusSeverity(status) {
+        const map = { 'approved': 'success', 'pending': 'warn', 'rejected': 'danger' }
+        return map[status] || 'secondary'
+      },
+      
+      // Форматирование даты
+      formatDate(dateString) {
+        if (!dateString) return '—'
+        return new Date(dateString).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+      },
+      
+      // Выход из аккаунта
+      handleLogout() {
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user')
+        window.dispatchEvent(new CustomEvent('auth-change', { detail: { isAuthenticated: false } }))
         this.$toast?.add({ 
-          severity: 'success', 
-          summary: 'Обновлено', 
-          detail: 'Отзыв успешно изменён', 
+          severity: 'info',
+          summary: 'Выход',
+          detail: 'Вы вышли из системы',
           life: 2000,
-          styleClass: 'my-success-toast'
+          styleClass: 'my-info-toast'
         })
-        this.reviewToEdit = null
+        this.$router.push('/')
       }
-    },
-    
-    // ===== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====
-    
-    getTypeIcon(typeName) {
-      const map = {
-        'парк': 'pi pi-tree', 'скамейка': 'pi pi-chair', 'фонарь': 'pi pi-lightbulb',
-        'мусорка': 'pi pi-trash', 'детская площадка': 'pi pi-users', 'дорожка': 'pi pi-route',
-        'клумба': 'pi pi-star', 'кафе': 'pi pi-coffee', 'ресторан': 'pi pi-utensils',
-        'магазин': 'pi pi-shopping-bag'
-      }
-      const key = Object.keys(map).find(k => typeName?.toLowerCase().includes(k))
-      return map[key] || 'pi pi-map-marker'
-    },
-    
-    getCategorySeverity(category) {
-      const map = {
-        'проблема': 'danger', 'предложение': 'info', 'похвала': 'success', 'вопрос': 'warn',
-        'problem': 'danger', 'suggestion': 'info', 'praise': 'success'
-      }
-      return map[category?.toLowerCase()] || 'secondary'
-    },
-    
-    getStatusLabel(status) {
-      const map = { 'approved': 'Одобрен', 'pending': 'На модерации', 'rejected': 'Отклонён' }
-      return map[status] || status
-    },
-    
-    getStatusSeverity(status) {
-      const map = { 'approved': 'success', 'pending': 'warn', 'rejected': 'danger' }
-      return map[status] || 'secondary'
-    },
-    
-    formatDate(dateString) {
-      if (!dateString) return '—'
-      return new Date(dateString).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
-    },
-    
-    handleLogout() {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('user')
-      window.dispatchEvent(new CustomEvent('auth-change', { detail: { isAuthenticated: false } }))
-      this.$toast?.add({ 
-        severity: 'info',
-        summary: 'Выход',
-        detail: 'Вы вышли из системы',
-        life: 2000,
-        styleClass: 'my-info-toast'
-      })
-      this.$router.push('/')
     }
   }
-}
 </script>
 
 <style scoped>
-/* ===================== ОБЩИЕ СТИЛИ ===================== */
+/* Общие стили страницы */
 .profile-page {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #003b08;
@@ -1031,7 +1103,7 @@ export default {
 }
 .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 
-/* ===================== ЗАГОЛОВОК ===================== */
+/* Стили заголовка */
 .profile-header {
   background: transparent;
   backdrop-filter: blur(20px);
@@ -1046,7 +1118,7 @@ export default {
   text-align: center;
 }
 
-/* ===================== СЕТКА ПРОФИЛЯ ===================== */
+/* Сетка профиля */
 .profile-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
@@ -1054,7 +1126,7 @@ export default {
   align-items: start;
 }
 
-/* ===================== КАРТОЧКИ ===================== */
+/* Стили карточек PrimeVue */
 :deep(.p-card) {
   border-radius: 20px !important;
   border: 1px solid rgba(22, 143, 4, 0.15) !important;
@@ -1077,7 +1149,7 @@ export default {
 }
 .card-title i { font-size: 20px; color: #168f04; }
 
-/* ===================== ПРОСМОТР ПРОФИЛЯ ===================== */
+/* Просмотр профиля */
 .profile-view { display: flex; flex-direction: column; gap: 16px; }
 .profile-field {
   display: flex;
@@ -1091,7 +1163,7 @@ export default {
 .field-value { font-size: 15px; font-weight: 600; color: #1a1a1a; text-align: right; margin: 0; }
 .btn-edit { margin-top: 8px; width: 100%; border-radius: 12px !important; }
 
-/* ===================== РЕДАКТИРОВАНИЕ ===================== */
+/* Редактирование профиля */
 .profile-edit { display: flex; flex-direction: column; gap: 16px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 14px; font-weight: 500; color: #334155; }
@@ -1111,7 +1183,7 @@ export default {
 .edit-actions { display: flex; gap: 12px; margin-top: 8px; }
 .btn-save, .btn-cancel { flex: 1; border-radius: 12px !important; }
 
-/* ===================== СТАТИСТИКА ===================== */
+/* Статистика */
 .loading-stats {
   display: flex;
   align-items: center;
@@ -1141,16 +1213,16 @@ export default {
 .stat-value { font-size: 24px; font-weight: 800; color: #168f04; }
 .stat-label { font-size: 12px; color: #64748b; font-weight: 500; }
 
-/* ===================== ОПАСНАЯ ЗОНА ===================== */
+/* Опасная зона */
 .danger-card :deep(.p-card) { border-color: rgba(220, 38, 38, 0.2) !important; }
 .btn-logout { width: 100%; border-radius: 12px !important; }
 
-/* ===================== DIVIDER ===================== */
+/* Divider */
 :deep(.p-divider .p-divider-content) { background: #fff !important; padding: 0 12px !important; }
 .divider-text { color: #64748b; font-size: 13px; font-weight: 500; }
 :deep(.p-divider) { border-color: rgba(22, 143, 4, 0.1) !important; margin: 8px 0 !important; }
 
-/* ===================== ВКЛАДКИ ===================== */
+/* Вкладки */
 .dashboard-section { margin-top: 20px; background-color: transparent; margin-top: 100px; }
 :deep(.p-tabview) { width: 100%; }
 :deep(.p-tabview-nav) {
@@ -1211,7 +1283,7 @@ export default {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ===== СЕТКА КАРТОЧЕК ===== */
+/* Сетка карточек */
 .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px; }
 .data-card {
   border-radius: 16px !important;
@@ -1227,10 +1299,10 @@ export default {
 }
 .data-card :deep(.p-card-content) { padding: 20px !important; }
 
-/* ===== КАРТОЧКА ОТЗЫВА / ОБЪЕКТА (ОДИНАКОВЫЕ СТИЛИ) ===== */
+/* Карточка отзыва/объекта */
 .review-card,
 .object-card { 
-  border-left: 4px solid #168f04 !important; /* Одинаковая зелёная полоса */
+  border-left: 4px solid #168f04 !important;
 }
 .object-link-wrapper {
   cursor: pointer;
@@ -1301,7 +1373,6 @@ export default {
   line-height: 1.6;
   margin: 0 0 14px 0;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1325,6 +1396,28 @@ export default {
 }
 .rating-badge i { font-size: 11px; }
 .date { display: flex; align-items: center; gap: 4px; }
+
+/* Рейтинг объекта */
+.object-rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #f59e0b;
+  font-weight: 700;
+  font-size: 14px;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.object-rating i {
+  font-size: 12px;
+}
+.object-rating small {
+  color: #64748b;
+  font-weight: 400;
+  font-size: 11px;
+}
+
 .card-actions {
   display: flex;
   gap: 8px;
@@ -1334,7 +1427,7 @@ export default {
   flex-wrap: wrap;
 }
 
-/* ===== ПУСТОЕ / ЗАГРУЗОЧНОЕ СОСТОЯНИЕ ===== */
+/* Пустое состояние */
 .tab-empty, .tab-loading {
   text-align: center;
   padding: 60px 20px;
@@ -1351,24 +1444,4 @@ export default {
   opacity: 0.8;
 }
 .tab-empty p { margin: 0 0 20px; font-size: 15px; }
-
-/* ===== АДАПТИВ ===== */
-@media (max-width: 1024px) {
-  .profile-grid { grid-template-columns: 1fr; }
-  .profile-sidebar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
-  .cards-grid { grid-template-columns: 1fr; }
-  .object-preview { flex-direction: column; }
-  .review-card .card-header, .object-card .card-header { flex-direction: column; align-items: flex-start; }
-  .object-icon-wrapper { align-self: flex-start; }
-}
-@media (max-width: 768px) {
-  .profile-sidebar { grid-template-columns: 1fr; }
-  .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .stat-value { font-size: 20px; }
-  .stat-label { font-size: 11px; }
-  :deep(.p-tabview-nav) { overflow-x: auto; flex-wrap: nowrap; padding: 4px !important; }
-  :deep(.p-tabview-nav-link) { padding: 10px 18px !important; font-size: 13px !important; white-space: nowrap; }
-  .card-actions { flex-wrap: wrap; }
-  .card-actions :deep(.p-button) { flex: 1; min-width: auto; justify-content: center; }
-}
 </style>

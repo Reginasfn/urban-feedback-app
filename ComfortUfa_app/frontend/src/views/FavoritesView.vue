@@ -47,10 +47,9 @@
       >
         <template #content>
           <div class="card-inner">
-            <!-- Левая часть: иконка типа -->
-            <div class="card-icon">
-              <i :class="getTypeIcon(obj.type_name)"></i>
-            </div>
+          <div class="card-icon">
+            <i :class="getTypeIcon(obj.type_name)"></i>
+          </div>
             
             <!-- Центральная часть: контент -->
             <div class="card-body">
@@ -141,20 +140,43 @@ const modalObject = ref(null)
 
 // ===== ИКОНКИ ПО ТИПАМ ОБЪЕКТОВ =====
 const getTypeIcon = (typeName) => {
+  console.log('🎨 [getTypeIcon] Вызван с typeName:', typeName)
+  
+  // 🔥 Расширенная карта иконок для всех типов объектов
   const typeMap = {
-    'кафе': 'pi pi-coffee',
-    'ресторан': 'pi pi-utensils',
-    'парк': 'pi pi-tree',
-    'музей': 'pi pi-landmark',
-    'отель': 'pi pi-building',
-    'магазин': 'pi pi-shopping-bag',
-    'аптека': 'pi pi-bolt',
-    'больница': 'pi pi-heart',
-    'заправка': 'pi pi-gas-pump',
-    'парковка': 'pi pi-car',
+    'Камера видеонаблюдения': 'pi pi-video', 
+    'Кафе': 'pi pi-map-marker', 
+    'Фонарь': 'pi pi-lightbulb',
+    'Скамейка': 'pi pi-map-marker', 
+    'Парк': 'pi pi-map-marker', 
+    'Беседка': 'pi pi-building-columns',
+    'Остановка': 'pi pi-car', 
+    'Детская площадка': 'pi pi-face-smile',
+    'Спортивная площадка': 'pi pi-bolt',
+    'Урна': 'pi pi-trash',
+    'Мусорный контейнер': 'pi pi-trash',
+    'Парковка': 'pi pi-car',
+    'Пешеходный переход': 'pi pi-directions-alt',
+    'Памятник': 'pi pi-flag',
+    'Информационный стенд': 'pi pi-info-circle',
+    'Цветник': 'pi pi-star',
+    'Дорожка': 'pi pi-arrow-right',
+    'Ограждение': 'pi pi-th-large'
   }
-  const key = Object.keys(typeMap).find(k => typeName?.toLowerCase().includes(k))
-  return typeMap[key] || 'pi pi-map-marker'
+  
+  if (!typeName) {
+    console.warn('⚠️ [getTypeIcon] typeName пустой или undefined!')
+    return 'pi pi-map-marker'
+  }
+  
+  const cleanName = typeName.toLowerCase().trim()
+  console.log('🔍 [getTypeIcon] Ищем в:', cleanName)
+  
+  const key = Object.keys(typeMap).find(k => cleanName.includes(k))
+  const icon = key ? typeMap[key] : 'pi pi-map-marker'
+  
+  console.log('✅ [getTypeIcon] Найдена иконка:', icon, 'для ключа:', key || 'не найден')
+  return icon
 }
 
 // ===== ЗАГРУЗКА ИЗБРАННОГО =====
@@ -170,6 +192,8 @@ const loadFavorites = async () => {
     const idsResp = await api.get('/api/objects/me/favorites/ids')
     const favoriteIds = idsResp.data.favorite_ids || []
 
+    console.log('📦 [loadFavorites] Favorite IDs:', favoriteIds)
+
     if (favoriteIds.length === 0) {
       favorites.value = []
       loading.value = false
@@ -183,7 +207,13 @@ const loadFavorites = async () => {
       }
     })
 
-    favorites.value = objectsResp.data || []
+    console.log('📦 [loadFavorites] Загруженные объекты:', objectsResp.data)
+    
+    // 🔥 Проверяем что есть type_name
+    favorites.value = (objectsResp.data || []).map(obj => {
+      console.log('🔍 [loadFavorites] Объект:', obj.name, 'type_name:', obj.type_name)
+      return obj
+    })
     
   } catch (err) {
     console.error('[Favorites] Error loading:', err)
@@ -433,6 +463,20 @@ onMounted(() => {
   font-size: 2rem;
 }
 
+.card-icon i,
+[class^="pi-"],
+[class*=" pi-"] {
+  font-family: 'primeicons' !important;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  display: inline-block;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* Тело карточки */
 .card-body {
   flex: 1;
@@ -542,98 +586,5 @@ onMounted(() => {
 
 .bookmark-btn i {
   pointer-events: none;
-}
-
-/* ===== АДАПТИВ ===== */
-@media (max-width: 1024px) {
-  .favorite-card {
-    max-width: 100%;
-  }
-  
-  .card-inner {
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-  
-  .card-icon {
-    flex: 0 0 64px;
-    height: 64px;
-    font-size: 1.75rem;
-  }
-  
-  .card-body {
-    flex: 1 1 calc(100% - 90px);
-  }
-  
-  .card-actions {
-    width: 100%;
-    justify-content: flex-end;
-    padding-top: 8px;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
-  }
-}
-
-@media (max-width: 768px) {
-  .favorites-page {
-    padding: 16px;
-  }
-  
-  .favorites-header {
-    flex-wrap: wrap;
-    padding: 12px 16px;
-  }
-  
-  .page-title {
-    font-size: 18px;
-    order: 3;
-    width: 100%;
-    margin-top: 12px;
-    text-align: center;
-  }
-  
-  .card-inner {
-    padding: 16px;
-  }
-  
-  .card-name {
-    font-size: 16px;
-  }
-  
-  .card-actions {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .btn-action {
-    flex: 1;
-    min-width: auto;
-    max-width: 140px;
-  }
-  
-  .bookmark-btn {
-    width: 40px;
-    height: 40px;
-  }
-}
-
-@media (max-width: 480px) {
-  .card-icon {
-    flex: 0 0 56px;
-    height: 56px;
-    font-size: 1.5rem;
-  }
-  
-  .card-name {
-    font-size: 15px;
-  }
-  
-  .card-address {
-    font-size: 13px;
-  }
-  
-  .btn-action {
-    --p-button-padding: 6px 10px;
-    font-size: 12px;
-  }
 }
 </style>
