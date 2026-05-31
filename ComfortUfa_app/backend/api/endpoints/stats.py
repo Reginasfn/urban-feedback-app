@@ -141,20 +141,58 @@ async def get_favorite_types(db: Session = Depends(get_db)):
 
 @router.get("/stats/reviews-by-category")
 async def get_reviews_by_category(db: Session = Depends(get_db)):
-    """Распределение отзывов по категориям"""
+    """Распределение отзывов по категориям с топ-3 объектами"""
     try:
+        # Основной запрос для категорий
         query = text("""
-            SELECT rc.name as category_name, COUNT(r.id_review) as count
+            SELECT 
+                rc.id_category_review,
+                rc.name as category_name, 
+                COUNT(r.id_review) as count
             FROM public.review_categories rc
             LEFT JOIN public.reviews r ON rc.id_category_review = r.id_category_review AND r.id_status = 2
             GROUP BY rc.id_category_review, rc.name
             ORDER BY count DESC
         """)
-        result = db.execute(query).all()
-        return [{"label": row.category_name or "Без категории", "value": row.count} for row in result]
+        categories_result = db.execute(query).all()
+        
+        result = []
+        for category in categories_result:
+            # Для каждой категории получаем топ-3 объекта с типами
+            top_objects_query = text("""
+                SELECT 
+                    o.id_object,
+                    o.name,
+                    t.name_type as type_name,
+                    COUNT(r.id_review) as review_count
+                FROM public.reviews r
+                INNER JOIN public.objects o ON r.id_object = o.id_object
+                LEFT JOIN public.type_object t ON o.id_type = t.id_type
+                WHERE r.id_category_review = :category_id 
+                  AND r.id_status = 2 
+                  AND o.id_status = 2
+                GROUP BY o.id_object, o.name, t.name_type
+                ORDER BY review_count DESC
+                LIMIT 5
+            """)
+            top_objects = db.execute(top_objects_query, {"category_id": category.id_category_review}).all()
+            
+            result.append({
+                "label": category.category_name or "Без категории",
+                "value": category.count,
+                "top_objects": [
+                    {
+                        "id": obj.id_object,
+                        "name": obj.name,
+                        "type": obj.type_name or "Не указан",
+                        "count": obj.review_count
+                    } for obj in top_objects
+                ]
+            })
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/stats/rating-distribution")
 async def get_rating_distribution(db: Session = Depends(get_db)):

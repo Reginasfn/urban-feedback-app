@@ -93,16 +93,101 @@
           </div>
 
           <Button
-            label="Оставить отзыв"
-            icon="pi pi-pencil"
+            :label="showReviewForm ? 'Скрыть форму' : (props.reviewToEdit?.id_review ? 'Редактировать отзыв' : 'Оставить отзыв')"
+            :icon="showReviewForm ? 'pi pi-times' : (props.reviewToEdit?.id_review ? 'pi pi-pencil' : 'pi pi-comment')"
             class="review-btn"
             style="height: 50px; width: 180px;"
-            @click="openReviewForm"
+            @click="toggleReviewForm"
           />
+        </div>
+
+        <!-- 🔥 СТАТИСТИКА ПО КАТЕГОРИЯМ И ОЦЕНКАМ -->
+        <div v-if="totalReviews > 0" class="review-stats-wrapper">
+          <!-- Категории -->
+          <div class="review-stats">
+            <div class="stat-item problem" title="Отзывы с категорией 'Проблема'">
+              <i class="pi pi-exclamation-triangle"></i>
+              <span>Проблемы: <strong>{{ reviewStats.problem }}</strong></span>
+            </div>
+            <div class="stat-item suggestion" title="Отзывы с категорией 'Предложение'">
+              <i class="pi pi-lightbulb"></i>
+              <span>Предложения: <strong>{{ reviewStats.suggestion }}</strong></span>
+            </div>
+            <div class="stat-item praise" title="Отзывы с категорией 'Похвала'">
+              <i class="pi pi-thumbs-up"></i>
+              <span>Похвала: <strong>{{ reviewStats.praise }}</strong></span>
+            </div>
+          </div>
+          
+          <!-- Двухколоночный layout: оценки + AI сводка -->
+          <div class="stats-grid">
+            <!-- Оценки (слева) -->
+            <div class="rating-stats">
+              <div class="rating-stats-title">Распределение оценок:</div>
+              <div class="rating-bars">
+                <div v-for="star in [5, 4, 3, 2, 1]" :key="star" class="rating-bar-item">
+                  <div class="rating-bar-label">
+                    <i class="pi pi-star-fill"></i> {{ star }}
+                  </div>
+                  <div class="rating-bar-track">
+                    <div 
+                      class="rating-bar-fill" 
+                      :style="{ width: totalReviews > 0 ? (ratingStats[star] / totalReviews * 100) + '%' : '0%' }"
+                    ></div>
+                  </div>
+                  <div class="rating-bar-count">{{ ratingStats[star] }}</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- AI сводка (справа) -->
+            <div class="ai-summary-card">
+              <div class="ai-summary-header">
+                <i class="pi pi-sparkles ai-icon"></i>
+                <h4>Важное из отзывов</h4>
+              </div>
+              
+              <div v-if="aiSummaryLoading" class="ai-loading">
+                <ProgressSpinner style="width: 32px; height: 32px" />
+                <span>Анализируем отзывы...</span>
+              </div>
+              
+              <div v-else-if="aiSummary" class="ai-summary-content">
+                <p class="typing-text">
+                  {{ displayedText }}
+                  <span v-if="isTyping" class="typing-cursor">|</span>
+                </p>
+                <div class="ai-footer">
+                  <span class="ai-badge">Текст составила нейросеть</span>
+                  <div class="ai-actions">
+                    <button class="ai-action-btn" title="Полезно">
+                      <i class="pi pi-thumbs-up"></i>
+                    </button>
+                    <button class="ai-action-btn" title="Бесполезно">
+                      <i class="pi pi-thumbs-down"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div v-else class="ai-empty">
+                <p>Недостаточно отзывов для анализа</p>
+              </div>
+            </div>
+
+          </div>
         </div>
 
         <Transition name="slide-fade">
           <div v-if="showReviewForm" class="review-form-card">
+            <!-- 🔥 Заголовок формы -->
+            <div class="form-title">
+              <h4>{{ formTitle }}</h4>
+              <p v-if="props.reviewToEdit?.id_review" class="form-subtitle">
+                Вы редактируете свой отзыв от {{ formatDate(props.reviewToEdit.created_at) }}
+              </p>
+            </div>
+
             <div class="form-group">
               <label class="form-label">Категория отзыва *</label>
               <div class="category-buttons">
@@ -182,11 +267,11 @@
                 label="Отмена"
                 severity="secondary"
                 text
-                @click="showReviewForm = false"
+                @click="cancelReviewForm"
               />
               <Button
-                label="Отправить"
-                icon="pi pi-send"
+                :label="submitButtonText"
+                :icon="props.reviewToEdit?.id_review ? 'pi pi-check' : 'pi pi-send'"
                 :loading="submittingReview"
                 :disabled="!canSubmitReview"
                 @click="submitReview"
@@ -294,7 +379,7 @@ const emit = defineEmits([
   'close', 
   'go-to-map', 
   'review-submitted',
-  'review-updated',  // ← добавь это
+  'review-updated',
   'object-updated'
 ])
 
@@ -321,6 +406,54 @@ const getCategoryColor = (categoryValue) => {
   return categoryColors[categoryValue] || { severity: 'secondary', class: '' }
 }
 
+// 🔥 Вычисляемые свойства для формы
+const submitButtonText = computed(() => 
+  props.reviewToEdit?.id_review ? 'Редактировать' : 'Отправить'
+)
+
+const formTitle = computed(() => 
+  props.reviewToEdit?.id_review ? 'Редактировать отзыв' : 'Оставить отзыв'
+)
+
+// 🔥 Статистика по категориям отзывов
+const reviewStats = computed(() => {
+  const stats = { problem: 0, suggestion: 0, praise: 0 }
+  
+  if (reviews.value && reviews.value.length > 0) {
+    reviews.value.forEach(review => {
+      const category = review.category?.toLowerCase()
+      if (category === 'problem' || category === 'проблема') {
+        stats.problem++
+      } else if (category === 'suggestion' || category === 'предложение') {
+        stats.suggestion++
+      } else if (category === 'praise' || category === 'похвала') {
+        stats.praise++
+      }
+    })
+  }
+  
+  return stats
+})
+
+// 🔥 Статистика по оценкам (1-5 звезд)
+const ratingStats = computed(() => {
+  const stats = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+  
+  if (reviews.value && reviews.value.length > 0) {
+    reviews.value.forEach(review => {
+      const rating = Math.round(review.rating)
+      if (rating >= 1 && rating <= 5) {
+        stats[rating]++
+      }
+    })
+  }
+  
+  return stats
+})
+
+// 🔥 Общее количество отзывов
+const totalReviews = computed(() => reviews.value?.length || 0)
+
 // Реактивный счётчик отзывов
 const reviewsCount = computed(() => reviews.value.length)
 
@@ -338,17 +471,43 @@ const canSubmitReview = computed(() =>
   !submittingReview.value
 )
 
+// 🔥 Переключение формы (открыть/закрыть)
+const toggleReviewForm = () => {
+  if (showReviewForm.value) {
+    // Закрываем форму
+    showReviewForm.value = false
+    // Сбрасываем форму только если не редактируем
+    if (!props.reviewToEdit?.id_review) {
+      reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+    }
+  } else {
+    // Открываем форму
+    openReviewForm()
+  }
+}
+
+// 🔥 Отмена редактирования
+const cancelReviewForm = () => {
+  showReviewForm.value = false
+  // Сбрасываем форму только если не редактируем
+  if (!props.reviewToEdit?.id_review) {
+    reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
+  }
+}
+
 const openReviewForm = () => {
-  if (props.reviewToEdit) {
-    // Редактирование: предзаполняем форму
+  if (props.reviewToEdit?.id_review) {
+    // 🔥 Редактирование: предзаполняем форму
+    console.log('✏️ Заполняем форму для редактирования:', props.reviewToEdit)
+    
     reviewForm.value = {
-      category: props.reviewToEdit.category || props.reviewToEdit.category_value,
-      rating: props.reviewToEdit.rating || 0,
+      category: props.reviewToEdit.category || props.reviewToEdit.category_value || null,
+      rating: typeof props.reviewToEdit.rating === 'number' ? props.reviewToEdit.rating : 0,
       text: props.reviewToEdit.text || '',
       photos: []
     }
   } else {
-    // Новый отзыв: пустая форма
+    // 🔥 Новый отзыв: пустая форма
     reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
   }
   showReviewForm.value = true
@@ -475,7 +634,6 @@ const refreshObjectData = async () => {
 }
 
 // Отправка отзыва с обработкой модерации
-// Отправка отзыва с обработкой модерации
 const submitReview = async () => {
   if (!props.object?.id_object) return
   submittingReview.value = true
@@ -485,6 +643,8 @@ const submitReview = async () => {
     
     if (props.reviewToEdit?.id_review) {
       // 🔥 ОБНОВЛЕНИЕ существующего отзыва (PUT)
+      console.log('✏️ Отправка обновления отзыва:', props.reviewToEdit.id_review)
+      
       const formData = new FormData()
       formData.append('category', reviewForm.value.category)
       formData.append('rating', reviewForm.value.rating)
@@ -507,12 +667,15 @@ const submitReview = async () => {
         }
       )
       
+      // Сброс формы и закрытие
       reviewForm.value = { category: null, rating: 0, text: '', photos: [] }
       showReviewForm.value = false
       
+      // Перезагрузка данных
       await loadReviews()
       await refreshObjectData()
       
+      // Уведомление родителя
       emit('review-updated', { 
         success: true, 
         id_review: props.reviewToEdit.id_review,
@@ -528,7 +691,9 @@ const submitReview = async () => {
       })
       
     } else {
-      // 🔥 СОЗДАНИЕ нового отзыва (POST) — ИСПРАВЛЕНО
+      // 🔥 СОЗДАНИЕ нового отзыва (POST)
+      console.log('✍️ Отправка нового отзыва')
+      
       const formData = new FormData()
       formData.append('id_object', props.object.id_object)
       formData.append('category', reviewForm.value.category)
@@ -559,7 +724,7 @@ const submitReview = async () => {
       // Уведомление родителя
       emit('review-submitted', { success: true, ...response.data })
       
-      // Тост с твоим стилем
+      // Тост
       toast.add({
         severity: 'success',
         summary: 'Успешно!',
@@ -608,28 +773,108 @@ const submitReview = async () => {
   }
 }
 
-// 🔥 Следим за изменением reviewToEdit и автоматически открываем форму редактирования
+// AI сводка отзывов
+const aiSummary = ref(null)
+const aiSummaryLoading = ref(false)
+const displayedText = ref('') // Текст, который отображается постепенно
+const isTyping = ref(false) // Флаг, что текст печатается
+
+const fullSummaryText = "Покупатели обращают внимание на то, что объект отличается ярким светом, многофункциональностью, качественным материалом, хорошей емкостью аккумулятора и удобным расположением в руке."
+
+// Функция печатающей машинки
+const typeText = (text, speed = 30) => {
+  return new Promise((resolve) => {
+    isTyping.value = true
+    displayedText.value = ''
+    let index = 0
+    
+    const type = () => {
+      if (index < text.length) {
+        displayedText.value += text.charAt(index)
+        index++
+        setTimeout(type, speed)
+      } else {
+        isTyping.value = false
+        resolve()
+      }
+    }
+    
+    type()
+  })
+}
+
+const loadAiSummary = async () => {
+  // Проверяем, что отзывы уже загружены
+  if (!reviews.value || reviews.value.length === 0) {
+    aiSummary.value = null
+    return
+  }
+  
+  aiSummaryLoading.value = true
+  displayedText.value = ''
+  
+  // Имитация задержки API
+  setTimeout(async () => {
+    aiSummaryLoading.value = false
+    aiSummary.value = fullSummaryText
+    
+    // Запускаем эффект печатающей машинки
+    await typeText(fullSummaryText, 30)
+  }, 1000)
+}
+
+// Триггер загрузки отзывов
+watch(
+  () => [props.visible, props.object?.id_object],
+  async ([isVisible, objectId]) => {
+    if (isVisible && objectId) {
+      await loadReviews()  // Ждём загрузки отзывов
+      await loadAiSummary()  // Потом загружаем AI сводку
+    }
+  },
+  { immediate: true }
+)
+
+// 🔥 Watch для reviewToEdit — открывает форму при редактировании
 watch(
   () => props.reviewToEdit,
-  (newReview) => {
-    if (newReview) {
-      console.log('🔥 reviewToEdit changed:', newReview)
+  (newReview, oldReview) => {
+    // Открываем форму только если reviewToEdit появился (не пропал)
+    if (newReview?.id_review && !oldReview?.id_review) {
+      console.log('🔥 Edit mode: открываем форму для отзыва', newReview.id_review)
       
       // Предзаполняем форму
       reviewForm.value = {
-        category: newReview.category || newReview.category_value,
-        rating: newReview.rating || 0,
+        category: newReview.category || newReview.category_value || null,
+        rating: typeof newReview.rating === 'number' ? newReview.rating : 0,
         text: newReview.text || '',
         photos: []
       }
       
-      // Показываем форму
-      showReviewForm.value = true
-      
-      console.log('✅ Форма открыта, reviewForm:', reviewForm.value)
+      // Открываем форму с небольшой задержкой для анимации
+      setTimeout(() => {
+        showReviewForm.value = true
+        console.log('✅ Форма редактирования открыта')
+      }, 100)
     }
   },
-  { immediate: false }
+  { immediate: false, deep: true }
+)
+
+// 🔥 Watch для visible — если модалка открыта + есть reviewToEdit, открываем форму
+watch(
+  () => [props.visible, props.reviewToEdit],
+  ([isVisible, review], [wasVisible]) => {
+    if (isVisible && !wasVisible && review?.id_review) {
+      // Модалка только что открылась + есть отзыв для редактирования
+      setTimeout(() => {
+        if (!showReviewForm.value) {
+          console.log('🔍 Авто-открытие формы при открытии модалки')
+          openReviewForm()
+        }
+      }, 200)
+    }
+  }
 )
 
 const onGoToMap = () => {
@@ -642,6 +887,10 @@ const onUpdateVisible = (value) => {
   if (!value) {
     showReviewForm.value = false
     reviewForm.value.photos = []
+    // Сбрасываем reviewToEdit при закрытии
+    if (props.reviewToEdit?.id_review) {
+      emit('review-updated', null)
+    }
     emit('close')
   }
 }
@@ -885,12 +1134,315 @@ watch(
   font-weight: 800;
 }
 
+
+
+
+/* 🔥 Обертка для всей статистики */
+.review-stats-wrapper {
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Статистика по категориям */
+.review-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  border: 1px solid rgba(22, 143, 4, 0.15);
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-item.problem {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  color: #b91c1c;
+}
+
+.stat-item.problem i {
+  font-size: 16px;
+}
+
+.stat-item.suggestion {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+  color: #1e40af;
+}
+
+.stat-item.suggestion i {
+  font-size: 16px;
+}
+
+.stat-item.praise {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #047857;
+}
+
+.stat-item.praise i {
+  font-size: 16px;
+}
+
+/* Grid для оценок и AI сводки */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 16px;
+}
+
+/* Статистика по оценкам (компактная) */
+.rating-stats {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  border: 1px solid rgba(22, 143, 4, 0.15);
+  height: fit-content;
+}
+
+.rating-stats-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.rating-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rating-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rating-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fbbf24;
+  min-width: 30px;
+}
+
+.rating-bar-label i {
+  font-size: 9px;
+}
+
+.rating-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(251, 191, 36, 0.2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rating-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.rating-bar-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 20px;
+  text-align: right;
+}
+
+
+
+
+
+/* Эффект печатающегося текста */
+.typing-text {
+  margin: 0 0 14px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #334155;
+  min-height: 60px; /* Чтобы не прыгало */
+}
+
+.typing-cursor {
+  display: inline-block;
+  color: #8b5cf6;
+  font-weight: 700;
+  animation: blink 0.8s ease-in-out infinite;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* AI сводка */
+.ai-summary-card {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 14px;
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #8b5cf6, #a78bfa, #8b5cf6);
+}
+
+.ai-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ai-icon {
+  font-size: 20px;
+  color: #8b5cf6;
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.ai-summary-header h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.ai-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: #64748b;
+}
+
+.ai-loading span {
+  font-size: 13px;
+}
+
+.ai-summary-content p {
+  margin: 0 0 14px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.ai-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.ai-badge {
+  font-size: 11px;
+  color: #8b5cf6;
+  font-weight: 500;
+}
+
+.ai-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-action-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #8b5cf6;
+}
+
+.ai-action-btn:hover {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: #8b5cf6;
+  transform: translateY(-2px);
+}
+
+.ai-empty {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+
+
+
+
+
+
 .review-form-card {
   margin-bottom: 24px;
   padding: 24px;
   border-radius: 24px;
   background: #f8fffa;
   border: 1px solid rgba(16, 185, 129, 0.18);
+}
+
+/* 🔥 Стили для заголовка формы */
+.form-title {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(22, 143, 4, 0.15);
+}
+
+.form-title h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #168f04;
+}
+
+.form-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
 }
 
 .form-group {
@@ -1206,6 +1758,26 @@ watch(
   .category-buttons { flex-direction: column; }
   .category-btn { width: 100%; }
   .hero-title { font-size: 1.5rem; }
+  
+  /* Адаптив для статистики */
+  .review-stats {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .rating-bar-item {
+    gap: 6px;
+  }
+  
+  .rating-bar-label {
+    min-width: 28px;
+    font-size: 11px;
+  }
+  
+  .rating-bar-count {
+    min-width: 20px;
+    font-size: 11px;
+  }
 }
 
 :deep(.my-big-toast) {

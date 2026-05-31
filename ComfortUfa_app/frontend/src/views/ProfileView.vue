@@ -187,22 +187,73 @@
 
       <!-- ВКЛАДКИ: ДЭШБОРД ПОЛЬЗОВАТЕЛЯ -->
       <div class="dashboard-section">
-        <TabView v-model:activeIndex="activeTabIndex" class="profile-tabs">
+        <TabView v-model:activeIndex="activeTabIndex" class="profile-tabs" @update:activeIndex="onTabChange">
           
           <!-- Вкладка: Мои отзывы -->
           <TabPanel header="Мои отзывы">
+            <!-- Фильтры и поиск -->
+            <div class="filters-bar">
+              <!-- Поиск -->
+              <div class="filter-group">
+                <i class="pi pi-search filter-icon"></i>
+                <InputText 
+                  v-model="reviewsSearch" 
+                  placeholder="Поиск по названию или адресу..." 
+                  class="filter-input"
+                  @input="applyReviewsFilters"
+                />
+              </div>
+              
+              <!-- Фильтр по типу -->
+              <div class="filter-group">
+                <Dropdown 
+                  v-model="reviewsTypeFilter" 
+                  :options="uniqueReviewTypes" 
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Все типы" 
+                  class="filter-dropdown"
+                  @change="applyReviewsFilters"
+                />
+              </div>
+              
+              <!-- Сортировка -->
+              <div class="filter-group">
+                <Dropdown 
+                  v-model="reviewsSort" 
+                  :options="sortOptions" 
+                  optionLabel="label"
+                  optionValue="value"
+                  class="filter-dropdown"
+                  @change="applyReviewsFilters"
+                />
+              </div>
+              
+              <!-- Сброс фильтров -->
+              <Button 
+                v-if="hasReviewsFilters"
+                icon="pi pi-times" 
+                label="Сбросить" 
+                @click="resetReviewsFilters"
+                class="filter-reset"
+                severity="secondary"
+                text
+                size="small"
+              />
+            </div>
+            
             <div v-if="loadingReviews" class="tab-loading">
               <i class="pi pi-spin pi-spinner"></i> Загрузка отзывов...
             </div>
             
-            <div v-else-if="userReviews.length === 0" class="tab-empty">
+            <div v-else-if="filteredReviews.length === 0" class="tab-empty">
               <i class="pi pi-comment"></i>
-              <p>Пока нет оставленных отзывов</p>
+              <p>{{ reviewsSearch || reviewsTypeFilter ? 'Ничего не найдено' : 'Пока нет оставленных отзывов' }}</p>
               <Button label="Оставить первый отзыв" @click="$router.push('/map')" severity="success" size="small" />
             </div>
             
             <div v-else class="cards-grid">
-              <Card v-for="review in userReviews" :key="review.id_review" class="data-card review-card">
+              <Card v-for="review in filteredReviews" :key="review.id_review" class="data-card review-card">
                 <template #content>
                   <!-- КЛИКАБЕЛЬНЫЙ ОБЪЕКТ -->
                   <div class="object-link-wrapper" @click="openObjectFromReview(review)">
@@ -224,8 +275,6 @@
 
                         </div>
                       </div>
-
-                      
                     </div>
                   </div>
                   
@@ -235,7 +284,7 @@
                   <!-- Рейтинг + дата -->
                   <div class="card-meta">
                     <span class="rating-badge">
-                      <i class="pi pi-star-fill"></i> {{ (review.rating_avg ?? review.rating ?? 0).toFixed(1) }}
+                      <i class="pi pi-star-fill"></i> {{ (review.rating_avg ?? review.rating ?? 0).toFixed(1) }}/5
                     </span>
                     <span class="date"><i class="pi pi-calendar"></i> {{ formatDate(review.created_at) }}</span>
                   </div>
@@ -249,22 +298,78 @@
                 </template>
               </Card>
             </div>
+            
+            <!-- Счётчик результатов -->
+            <div v-if="!loadingReviews && filteredReviews.length > 0" class="results-count">
+              Показано {{ filteredReviews.length }} из {{ userReviews.length }}
+            </div>
           </TabPanel>
 
           <!-- Вкладка: Мои объекты -->
           <TabPanel header="Мои объекты">
+            <!-- Фильтры и поиск -->
+            <div class="filters-bar">
+              <!-- Поиск -->
+              <div class="filter-group">
+                <i class="pi pi-search filter-icon"></i>
+                <InputText 
+                  v-model="objectsSearch" 
+                  placeholder="Поиск по названию или адресу..." 
+                  class="filter-input"
+                  @input="applyObjectsFilters"
+                />
+              </div>
+              
+              <!-- Фильтр по типу -->
+              <div class="filter-group">
+                <Dropdown 
+                  v-model="objectsTypeFilter" 
+                  :options="uniqueObjectTypes" 
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Все типы" 
+                  class="filter-dropdown"
+                  @change="applyObjectsFilters"
+                />
+              </div>
+              
+              <!-- Сортировка -->
+              <div class="filter-group">
+                <Dropdown 
+                  v-model="objectsSort" 
+                  :options="sortOptions" 
+                  optionLabel="label"
+                  optionValue="value"
+                  class="filter-dropdown"
+                  @change="applyObjectsFilters"
+                />
+              </div>
+              
+              <!-- Сброс фильтров -->
+              <Button 
+                v-if="hasObjectsFilters"
+                icon="pi pi-times" 
+                label="Сбросить" 
+                @click="resetObjectsFilters"
+                class="filter-reset"
+                severity="secondary"
+                text
+                size="small"
+              />
+            </div>
+            
             <div v-if="loadingObjects" class="tab-loading">
               <i class="pi pi-spin pi-spinner"></i> Загрузка объектов...
             </div>
             
-            <div v-else-if="userObjects.length === 0" class="tab-empty">
+            <div v-else-if="filteredObjects.length === 0" class="tab-empty">
               <i class="pi pi-map-marker"></i>
-              <p>Вы ещё не добавляли объекты</p>
+              <p>{{ objectsSearch || objectsTypeFilter ? 'Ничего не найдено' : 'Вы ещё не добавляли объекты' }}</p>
               <Button label="Добавить объект" @click="$router.push('/map')" severity="success" size="small" />
             </div>
             
             <div v-else class="cards-grid">
-              <Card v-for="obj in userObjects" :key="obj.id_object" class="data-card review-card">
+              <Card v-for="obj in filteredObjects" :key="obj.id_object" class="data-card review-card">
                 <template #content>
                   <!-- Шапка: тип + иконка -->
                   <div class="card-header">
@@ -290,7 +395,7 @@
                   <!-- Рейтинг + дата -->
                   <div class="card-meta">
                     <span class="rating-badge">
-                      <i class="pi pi-star-fill"></i> {{ (obj.rating_avg ?? 0).toFixed(1) }}
+                      <i class="pi pi-star-fill"></i> {{ (obj.rating_avg ?? 0).toFixed(1) }}/5
                     </span>
                     <span class="date">
                       <i class="pi pi-calendar"></i> {{ formatDate(obj.created_at) }}
@@ -305,6 +410,11 @@
                   </div>
                 </template>
               </Card>
+            </div>
+            
+            <!-- Счётчик результатов -->
+            <div v-if="!loadingObjects && filteredObjects.length > 0" class="results-count">
+              Показано {{ filteredObjects.length }} из {{ userObjects.length }}
             </div>
           </TabPanel>
           
@@ -340,12 +450,13 @@
   import Divider from 'primevue/divider'
   import TabView from 'primevue/tabview'
   import TabPanel from 'primevue/tabpanel'
+  import Dropdown from 'primevue/dropdown'
   import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
 
   export default {
     name: 'ProfileView',
     components: { 
-      Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, ObjectDetailsModal
+      Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, Dropdown, ObjectDetailsModal
     },
     
     data() {
@@ -398,7 +509,130 @@
         reviewToEdit: null,
         
         // Настройка позиции скролла при переходе на карту
-        mapScrollPosition: 165
+        mapScrollPosition: 165,
+        
+        // ===== ФИЛЬТРЫ И СОРТИРОВКА ДЛЯ ОТЗЫВОВ =====
+        reviewsSearch: '',
+        reviewsTypeFilter: null,
+        reviewsSort: 'newest',
+        
+        // ===== ФИЛЬТРЫ И СОРТИРОВКА ДЛЯ ОБЪЕКТОВ =====
+        objectsSearch: '',
+        objectsTypeFilter: null,
+        objectsSort: 'newest',
+        
+        // Опции сортировки
+        sortOptions: [
+          { label: 'Сначала новые', value: 'newest' },
+          { label: 'Сначала старые', value: 'oldest' },
+          { label: 'По рейтингу', value: 'rating' },
+          { label: 'По названию', value: 'name' }
+        ]
+      }
+    },
+    
+    computed: {
+      // Уникальные типы для фильтра отзывов
+      uniqueReviewTypes() {
+        const types = [...new Set(this.userReviews.map(r => r.type_name || r.object_type).filter(t => t))]
+        return [
+          { label: 'Все типы', value: null },
+          ...types.map(t => ({ label: t, value: t }))
+        ]
+      },
+      
+      // Уникальные типы для фильтра объектов
+      uniqueObjectTypes() {
+        const types = [...new Set(this.userObjects.map(o => o.type_name).filter(t => t))]
+        return [
+          { label: 'Все типы', value: null },
+          ...types.map(t => ({ label: t, value: t }))
+        ]
+      },
+      
+      // Есть ли активные фильтры для отзывов
+      hasReviewsFilters() {
+        return this.reviewsSearch || this.reviewsTypeFilter || this.reviewsSort !== 'newest'
+      },
+      
+      // Есть ли активные фильтры для объектов
+      hasObjectsFilters() {
+        return this.objectsSearch || this.objectsTypeFilter || this.objectsSort !== 'newest'
+      },
+      
+      // Отфильтрованные и отсортированные отзывы
+      filteredReviews() {
+        let result = [...this.userReviews]
+        
+        // Поиск
+        if (this.reviewsSearch) {
+          const query = this.reviewsSearch.toLowerCase()
+          result = result.filter(r => 
+            (r.object_name && r.object_name.toLowerCase().includes(query)) ||
+            (r.object_address && r.object_address.toLowerCase().includes(query)) ||
+            (r.text && r.text.toLowerCase().includes(query))
+          )
+        }
+        
+        // Фильтр по типу
+        if (this.reviewsTypeFilter) {
+          result = result.filter(r => (r.type_name || r.object_type) === this.reviewsTypeFilter)
+        }
+        
+        // Сортировка
+        switch (this.reviewsSort) {
+          case 'newest':
+            result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            break
+          case 'oldest':
+            result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            break
+          case 'rating':
+            result.sort((a, b) => (b.rating_avg || b.rating || 0) - (a.rating_avg || a.rating || 0))
+            break
+          case 'name':
+            result.sort((a, b) => (a.object_name || '').localeCompare(b.object_name || ''))
+            break
+        }
+        
+        return result
+      },
+      
+      // Отфильтрованные и отсортированные объекты
+      filteredObjects() {
+        let result = [...this.userObjects]
+        
+        // Поиск
+        if (this.objectsSearch) {
+          const query = this.objectsSearch.toLowerCase()
+          result = result.filter(o => 
+            (o.name && o.name.toLowerCase().includes(query)) ||
+            (o.address && o.address.toLowerCase().includes(query))
+          )
+        }
+        
+        // Фильтр по типу
+        if (this.objectsTypeFilter) {
+          result = result.filter(o => o.type_name === this.objectsTypeFilter)
+        }
+        
+        // Сортировка
+        switch (this.objectsSort) {
+          case 'newest':
+            result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            break
+          case 'oldest':
+            result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            break
+          case 'rating':
+            result.sort((a, b) => (b.rating_avg || 0) - (a.rating_avg || 0))
+            break
+          case 'name':
+            result.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+            break
+        }
+        
+        return result
       }
     },
     
@@ -419,6 +653,39 @@
     },
     
     methods: {
+      // Переключение вкладки - сбрасываем фильтры
+      onTabChange(index) {
+        if (index === 0) {
+          this.resetReviewsFilters()
+        } else if (index === 1) {
+          this.resetObjectsFilters()
+        }
+      },
+      
+      // Применение фильтров для отзывов
+      applyReviewsFilters() {
+        // Computed property автоматически пересчитается
+      },
+      
+      // Применение фильтров для объектов
+      applyObjectsFilters() {
+        // Computed property автоматически пересчитается
+      },
+      
+      // Сброс фильтров для отзывов
+      resetReviewsFilters() {
+        this.reviewsSearch = ''
+        this.reviewsTypeFilter = null
+        this.reviewsSort = 'newest'
+      },
+      
+      // Сброс фильтров для объектов
+      resetObjectsFilters() {
+        this.objectsSearch = ''
+        this.objectsTypeFilter = null
+        this.objectsSort = 'newest'
+      },
+      
       // Загрузка данных профиля
       async fetchProfile() {
         try {
@@ -499,7 +766,6 @@
                 try {
                   const response = await axios.get('http://localhost:8000/api/objects/' + review.id_object)
                   const fullObject = response.data
-                  
                   
                   return {
                     ...review,
@@ -1222,65 +1488,145 @@
 .divider-text { color: #64748b; font-size: 13px; font-weight: 500; }
 :deep(.p-divider) { border-color: rgba(22, 143, 4, 0.1) !important; margin: 8px 0 !important; }
 
-/* Вкладки */
-.dashboard-section { margin-top: 20px; background-color: transparent; margin-top: 100px; }
-:deep(.p-tabview) { width: 100%; }
+/* ===== ВКЛАДКИ: ОБНОВЛЁННЫЙ СТИЛЬ ===== */
+.dashboard-section { 
+  margin-top: 100px; 
+  background: transparent; 
+}
+
+:deep(.p-tabview) { 
+  width: 100%; 
+}
+
+/* Навигация вкладок */
 :deep(.p-tabview-nav) {
-  background: linear-gradient(135deg, rgba(22, 143, 4, 0.08), rgba(22, 143, 4, 0.02)) !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
   border: 1px solid rgba(22, 143, 4, 0.2) !important;
   border-radius: 16px 16px 0 0 !important;
-  padding: 6px !important;
-  gap: 4px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  padding: 8px !important;
+  gap: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
 }
+
+/* Ссылки вкладок */
 :deep(.p-tabview-nav-link) {
   border: none !important;
   border-radius: 12px !important;
   color: #64748b !important;
   font-weight: 600 !important;
   font-size: 14px !important;
-  padding: 12px 24px !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  padding: 12px 28px !important;
+  transition: all 0.3s ease !important;
   background: transparent !important;
   position: relative;
-  overflow: hidden;
 }
-:deep(.p-tabview-nav-link)::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(22, 143, 4, 0.15), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  border-radius: 12px;
-}
+
+/* Эффект при наведении */
 :deep(.p-tabview-nav-link:hover) {
   color: #168f04 !important;
-  background: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(22, 143, 4, 0.08) !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(22, 143, 4, 0.1);
 }
-:deep(.p-tabview-nav-link:hover)::before { opacity: 1; }
+
+/* Активная вкладка */
 :deep(.p-tabview-nav-link.p-highlight) {
   color: #fff !important;
   background: linear-gradient(135deg, #168f04, #0d6f03) !important;
   font-weight: 700 !important;
-  box-shadow: 0 4px 16px rgba(22, 143, 4, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(22, 143, 4, 0.3) !important;
 }
-:deep(.p-tabview-nav-link.p-highlight)::before { display: none; }
+
+/* Панель контента вкладок */
 :deep(.p-tabview-panels) {
-  background: rgba(255, 255, 255, 0.95) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(20px) !important;
   border: 1px solid rgba(22, 143, 4, 0.15) !important;
   border-top: none !important;
   border-radius: 0 0 16px 16px !important;
   padding: 24px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
-  animation: slideDown 0.3s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06) !important;
 }
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
+
+/* Анимация появления контента */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+:deep(.p-tabview-panels) {
+  animation: fadeIn 0.3s ease;
+}
+
+/* ===== ПАНЕЛЬ ФИЛЬТРОВ ===== */
+.filters-bar {
+  display: flex;
+  /* flex-wrap: wrap; */
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(22, 143, 4, 0.15);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 340px;
+}
+
+.filter-icon {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.filter-input {
+  flex: 1;
+  min-width: 180px;
+  border-radius: 10px !important;
+  border: 1px solid rgba(22, 143, 4, 0.2) !important;
+}
+
+.filter-input:focus {
+  border-color: #168f04 !important;
+  box-shadow: 0 0 0 3px rgba(22, 143, 4, 0.1) !important;
+}
+
+.filter-dropdown {
+  width: 200px;
+  border-radius: 10px !important;
+}
+
+.filter-dropdown :deep(.p-dropdown) {
+  width: 100%;
+  border-radius: 10px !important;
+  border: 1px solid rgba(22, 143, 4, 0.2) !important;
+}
+
+.filter-dropdown :deep(.p-dropdown:focus) {
+  border-color: #168f04 !important;
+  box-shadow: 0 0 0 3px rgba(22, 143, 4, 0.1) !important;
+}
+
+.filter-reset {
+  margin-left: auto;
+  color: #64748b !important;
+}
+
+.filter-reset:hover {
+  color: #168f04 !important;
+}
+
+/* Счётчик результатов */
+.results-count {
+  text-align: center;
+  padding: 12px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 /* Сетка карточек */

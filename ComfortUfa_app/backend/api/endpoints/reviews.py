@@ -181,6 +181,7 @@ async def get_object_reviews(object_id: int, limit: int = 10, offset: int = 0):
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # 🔥 ИСПРАВЛЕНО: Группируем фото в массив
         cursor.execute("""
             SELECT 
                 r.id_review,
@@ -189,18 +190,26 @@ async def get_object_reviews(object_id: int, limit: int = 10, offset: int = 0):
                 r.created_at,
                 rc.name as category_name,
                 u.nickname,
-                p.file_path as photo_path
+                ARRAY_AGG(p.file_path) FILTER (WHERE p.file_path IS NOT NULL) as photo_paths
             FROM reviews r
             JOIN review_categories rc ON r.id_category_review = rc.id_category_review
             JOIN users u ON r.id_user = u.id_user
             LEFT JOIN photos p ON r.id_review = p.review_id
             WHERE r.id_object = %s AND r.id_status = 2
+            GROUP BY r.id_review, r.text, r.rating, r.created_at, rc.name, u.nickname
             ORDER BY r.created_at DESC
             LIMIT %s OFFSET %s
         """, (object_id, limit, offset))
         
         reviews = []
         for row in cursor.fetchall():
+            # 🔥 Преобразуем массив путей в массив объектов с URL
+            photo_paths = row[6] or []
+            photos = [
+                {"url": f"http://localhost:8000/{path}", "path": path}
+                for path in photo_paths
+            ] if photo_paths else []
+            
             reviews.append({
                 "id": row[0],
                 "text": row[1],
@@ -208,12 +217,15 @@ async def get_object_reviews(object_id: int, limit: int = 10, offset: int = 0):
                 "created_at": row[3].isoformat() if row[3] else None,
                 "category": row[4],
                 "author": row[5] or "Аноним",
-                "photo": f"http://localhost:8000/{row[6]}" if row[6] else None
+                "photos": photos,  # 🔥 Теперь это массив!
+                "category_name": row[4]  # Добавляем для совместимости
             })
         
+        # Считаем общее количество отзывов (без GROUP BY)
         cursor.execute("""
-            SELECT COUNT(*) FROM reviews 
-            WHERE id_object = %s AND id_status = 2
+            SELECT COUNT(DISTINCT r.id_review)
+            FROM reviews r
+            WHERE r.id_object = %s AND r.id_status = 2
         """, (object_id,))
         total = cursor.fetchone()[0]
         
@@ -230,7 +242,6 @@ async def get_object_reviews(object_id: int, limit: int = 10, offset: int = 0):
         if conn:
             cursor.close()
             conn.close()
-
 
 # ===== Удаление отзыва =====
 @router.delete("/{review_id}")
@@ -388,6 +399,4 @@ async def update_review(
         if conn:
             cursor.close()
             conn.close()
-
-
             

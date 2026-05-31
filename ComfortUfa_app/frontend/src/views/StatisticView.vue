@@ -217,13 +217,38 @@ const chartOptions = {
   plugins: {
     legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } },
     tooltip: { 
-      backgroundColor: 'rgba(255,255,255,0.95)',
+      backgroundColor: 'rgba(255,255,255,0.98)',
       titleColor: '#1a1a1a',
       bodyColor: '#475569',
       borderColor: '#e2e8f0',
       borderWidth: 1,
-      padding: 12,
-      displayColors: true
+      padding: 16,
+      displayColors: true,
+      // Кастомный tooltip для круговой диаграммы отзывов
+      callbacks: {
+        afterBody: function(context) {
+          const index = context[0].dataIndex
+          const category = reviewsByCategory.value[index]
+          
+          if (!category || !category.top_objects || category.top_objects.length === 0) {
+            return []
+          }
+          
+          const lines = [''] // Пустая строка для отступа
+          lines.push('Объекты:')
+          
+          category.top_objects.forEach((obj, idx) => {
+            // Если названия нет или пустое
+            const name = obj.name && obj.name.trim() ? 
+              (obj.name.length > 25 ? obj.name.slice(0, 25) + '...' : obj.name) : 
+              'Без названия'
+            const type = obj.type || 'Не указан'
+            lines.push(`  ${idx + 1}. ${name} (${obj.count}) (${type})`)
+          })
+          
+          return lines
+        }
+      }
     }
   },
   scales: {
