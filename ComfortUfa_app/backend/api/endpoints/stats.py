@@ -194,27 +194,6 @@ async def get_reviews_by_category(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/stats/rating-distribution")
-async def get_rating_distribution(db: Session = Depends(get_db)):
-    """Распределение оценок (1-5 звёзд)"""
-    try:
-        query = text("""
-            SELECT rating, COUNT(*) as count
-            FROM public.reviews
-            WHERE id_status = 2 AND rating IS NOT NULL
-            GROUP BY rating
-            ORDER BY rating ASC
-        """)
-        result = db.execute(query).all()
-        # Заполняем пропущенные оценки нулями
-        distribution = {str(i): 0 for i in range(1, 6)}
-        for row in result:
-            distribution[str(row.rating)] = row.count
-        return [{"rating": k, "count": v} for k, v in distribution.items()]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/stats/activity-timeline")
 async def get_activity_timeline(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     """Активность по дням (новые объекты + отзывы)"""
@@ -234,5 +213,58 @@ async def get_activity_timeline(days: int = Query(30, ge=1, le=365), db: Session
         """)
         result = db.execute(query, {"start_date": start_date}).all()
         return [{"date": row.date.isoformat(), "objects": row.new_objects, "reviews": row.new_reviews} for row in result]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/stats/rating-distribution")
+async def get_rating_distribution(db: Session = Depends(get_db)):
+    """Распределение оценок (1-5 звёзд) с топ-5 типов объектов для каждой оценки"""
+    try:
+        # Основной запрос для распределения оценок
+        query = text("""
+            SELECT rating, COUNT(*) as count
+            FROM public.reviews
+            WHERE id_status = 2 AND rating IS NOT NULL
+            GROUP BY rating
+            ORDER BY rating ASC
+        """)
+        result = db.execute(query).all()
+        
+        # Заполняем пропущенные оценки нулями
+        distribution = {str(i): 0 for i in range(1, 6)}
+        for row in result:
+            distribution[str(row.rating)] = row.count
+        
+        # Для каждой оценки получаем топ-5 типов объектов
+        final_result = []
+        for rating in range(1, 6):
+            top_types_query = text("""
+                SELECT 
+                    t.name_type as type_name,
+                    COUNT(r.id_review) as review_count
+                FROM public.reviews r
+                INNER JOIN public.objects o ON r.id_object = o.id_object
+                INNER JOIN public.type_object t ON o.id_type = t.id_type
+                WHERE r.rating = :rating 
+                  AND r.id_status = 2 
+                  AND o.id_status = 2
+                GROUP BY t.id_type, t.name_type
+                ORDER BY review_count DESC
+                LIMIT 5
+            """)
+            top_types = db.execute(top_types_query, {"rating": rating}).all()
+            
+            final_result.append({
+                "rating": str(rating),
+                "count": distribution[str(rating)],
+                "top_types": [
+                    {
+                        "type": obj.type_name or "Не указан",
+                        "count": obj.review_count
+                    } for obj in top_types
+                ]
+            })
+        
+        return final_result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

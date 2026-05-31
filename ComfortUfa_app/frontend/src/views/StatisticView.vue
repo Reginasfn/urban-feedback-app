@@ -81,14 +81,12 @@
         <!-- Объекты по типам (Bar) -->
         <div class="chart-card">
           <h3 class="chart-title">Объекты по типам</h3>
-          <!-- ⚠️ Используем обычные настройки -->
           <Bar :data="objectsByTypeChart" :options="chartOptions" />
         </div>
         
         <!-- Отзывы по категориям (Pie) -->
         <div class="chart-card">
           <h3 class="chart-title">Отзывы по категориям</h3>
-          <!-- ⚠️ Используем специальные настройки с Топ-5 -->
           <Pie :data="reviewsByCategoryChart" :options="reviewsByCategoryChartOptions" />
         </div>
       </div>
@@ -98,7 +96,6 @@
         <!-- Топ объектов в избранном (Horizontal Bar) -->
         <div class="chart-card wide">
           <h3 class="chart-title">Топ объектов в избранном</h3>
-          <!-- ⚠️ Используем обычные настройки -->
           <Bar :data="topFavoritedChart" :options="{ ...chartOptions, indexAxis: 'y' }" />
         </div>
       </div>
@@ -108,14 +105,12 @@
         <!-- Распределение оценок (Doughnut) -->
         <div class="chart-card">
           <h3 class="chart-title">Распределение оценок</h3>
-          <!-- ⚠️ Используем обычные настройки -->
-          <Doughnut :data="ratingDistributionChart" :options="chartOptions" />
+          <Doughnut :data="ratingDistributionChart" :options="ratingDistributionChartOptions" />
         </div>
         
         <!-- Топ по отзывам (Bar) -->
         <div class="chart-card">
           <h3 class="chart-title">Топ объектов по отзывам</h3>
-          <!-- ⚠️ Используем обычные настройки -->
           <Bar :data="topReviewedChart" :options="{ ...chartOptions, indexAxis: 'y' }" />
         </div>
       </div>
@@ -123,7 +118,6 @@
       <!-- Активность по времени (Line) -->
       <div class="chart-card full-width">
         <h3 class="chart-title">Активность за период</h3>
-        <!-- ⚠️ Используем обычные настройки -->
         <Line :data="activityTimelineChart" :options="timelineChartOptions" />
       </div>
 
@@ -217,7 +211,7 @@ const chartColors = {
   bg: 'rgba(22, 143, 4, 0.1)'
 }
 
-// 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (БЕЗ топ-5 объектов)
+// 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (БЕЗ кастомных тултипов)
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -231,7 +225,6 @@ const chartOptions = {
       borderWidth: 1,
       padding: 12,
       displayColors: true
-      // Здесь НЕТ callbacks.afterBody
     }
   },
   scales: {
@@ -240,15 +233,14 @@ const chartOptions = {
   }
 }
 
-// 2. СПЕЦИАЛЬНЫЕ НАСТРОЙКИ ТОЛЬКО ДЛЯ PIE CHART (С топ-5 объектами)
+// 2. СПЕЦИАЛЬНЫЕ НАСТРОЙКИ ТОЛЬКО ДЛЯ ОТЗЫВОВ ПО КАТЕГОРИЯМ (Pie)
 const reviewsByCategoryChartOptions = {
-  ...chartOptions, // Копируем базовые стили
+  ...chartOptions,
   plugins: {
     ...chartOptions.plugins,
     tooltip: {
       ...chartOptions.plugins.tooltip,
       callbacks: {
-        // ⚠️ ЭТО ТОЛЬКО ДЛЯ ОТЗЫВОВ ПО КАТЕГОРИЯМ
         afterBody: function(context) {
           const index = context[0].dataIndex
           const category = reviewsByCategory.value[index]
@@ -257,7 +249,7 @@ const reviewsByCategoryChartOptions = {
             return []
           }
           
-          const lines = [''] // Отступ
+          const lines = ['']
           lines.push('📍 Топ-5 объектов:')
           
           category.top_objects.forEach((obj, idx) => {
@@ -266,6 +258,37 @@ const reviewsByCategoryChartOptions = {
               'Без названия'
             const type = obj.type || 'Не указан'
             lines.push(`  ${idx + 1}. ${name} (${obj.count}) (${type})`)
+          })
+          
+          return lines
+        }
+      }
+    }
+  }
+}
+
+// 3. СПЕЦИАЛЬНЫЕ НАСТРОЙКИ ТОЛЬКО ДЛЯ РАСПРЕДЕЛЕНИЯ ОЦЕНОК (Doughnut)
+const ratingDistributionChartOptions = {
+  ...chartOptions,
+  plugins: {
+    ...chartOptions.plugins,
+    tooltip: {
+      ...chartOptions.plugins.tooltip,
+      callbacks: {
+        // ⚠️ Форматирует тултип как: "1.0 ★\n\n📍 Топ-5 типов объектов:..."
+        afterBody: function(context) {
+          const index = context[0].dataIndex
+          const ratingData = ratingDistribution.value[index]
+          
+          if (!ratingData || !ratingData.top_types || ratingData.top_types.length === 0) {
+            return []
+          }
+          
+          const lines = [''] // Пустая строка для отступа
+          lines.push('📍 Топ-5 типов объектов:')
+          
+          ratingData.top_types.forEach((item, idx) => {
+            lines.push(`  ${idx + 1}. ${item.type} (${item.count})`)
           })
           
           return lines
@@ -326,7 +349,7 @@ const topFavoritedChart = computed(() => ({
 }))
 
 const ratingDistributionChart = computed(() => ({
-  labels: ratingDistribution.value.map(i => `${i.rating}★`),
+  labels: ratingDistribution.value.map(i => `${i.rating}.0 ★`),
   datasets: [{
     data: ratingDistribution.value.map(i => i.count),
     backgroundColor: [
@@ -730,4 +753,21 @@ onMounted(() => {
   }
 }
 
+@media (max-width: 640px) {
+  .metric-card {
+    padding: 16px;
+  }
+  
+  .metric-value {
+    font-size: 22px;
+  }
+  
+  .chart-card {
+    padding: 16px;
+  }
+  
+  .chart-title {
+    font-size: 14px;
+  }
+}
 </style>
