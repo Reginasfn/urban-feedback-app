@@ -7,18 +7,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 import requests
 import json
+from pathlib import Path
 from dotenv import load_dotenv
-
 from api.database import get_db
 
 router = APIRouter(prefix="/api/reviews", tags=["AI Summary"])
 
-# 🔥 Твой API ключ OpenRouter (добавь в .env!)
-OPENROUTER_API_KEY = "sk-or-v1"
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
+ENV_PATH = BASE_DIR / ".env"
 
-print("KEY =", OPENROUTER_API_KEY)
-print("AUTH =", f"Bearer {OPENROUTER_API_KEY}")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+print(f"🔑 Key loaded: {bool(OPENROUTER_API_KEY)}")
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 class ReviewData(BaseModel):
     text: str

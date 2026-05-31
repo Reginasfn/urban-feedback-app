@@ -406,7 +406,6 @@
                   <div class="card-actions">
                     <Button icon="pi pi-map" label="На карте" text size="small" @click="showObjectOnMap(obj)" />
                     <Button icon="pi pi-info-circle" label="Подробнее" text size="small" @click="openObjectDetails(obj)" />
-                    <Button icon="pi pi-trash" label="Удалить" text severity="danger" size="small" @click="confirmDeleteObject(obj.id_object)" />
                   </div>
                 </template>
               </Card>
@@ -1222,38 +1221,6 @@
           life: 3000,
           styleClass: 'my-info-toast'
         })
-      },
-      
-      // Удаление объекта
-      async confirmDeleteObject(objectId) {
-        if (!confirm('Вы уверены, что хотите удалить этот объект? Все связанные отзывы также будут удалены.')) return
-        
-        try {
-          const response = await axios.delete('http://localhost:8000/api/objects/' + objectId, {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-          })
-          
-          if (response.data?.success || response.status === 200) {
-            this.userObjects = this.userObjects.filter(o => o.id_object !== objectId)
-            this.$toast?.add({ 
-              severity: 'success', 
-              summary: 'Удалено', 
-              detail: 'Объект успешно удалён', 
-              life: 2000,
-              styleClass: 'my-success-toast'
-            })
-          }
-        } catch (error) {
-          console.error('Ошибка удаления:', error)
-          const message = error.response?.data?.detail || 'Не удалось удалить объект'
-          this.$toast?.add({ 
-            severity: 'error', 
-            summary: 'Ошибка', 
-            detail: message, 
-            life: 3000,
-            styleClass: 'my-error-toast'
-          })
-        }
       },
       
       // Обработка отправки отзыва из модалки
