@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.database import engine, Base, get_db 
-from api.endpoints import objects, stats, auth, users, reviews, recommendations
+from api.endpoints import objects, stats, auth, users, reviews, recommendations, ai_summary
 from fastapi.staticfiles import StaticFiles
 import logging
 
@@ -27,6 +27,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(reviews.router)
 app.include_router(recommendations.router)
+app.include_router(ai_summary.router)
 
 app.mount("/resources", StaticFiles(directory="resources"), name="resources")
 

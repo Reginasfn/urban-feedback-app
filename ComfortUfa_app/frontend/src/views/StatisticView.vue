@@ -81,13 +81,15 @@
         <!-- Объекты по типам (Bar) -->
         <div class="chart-card">
           <h3 class="chart-title">Объекты по типам</h3>
+          <!-- ⚠️ Используем обычные настройки -->
           <Bar :data="objectsByTypeChart" :options="chartOptions" />
         </div>
         
         <!-- Отзывы по категориям (Pie) -->
         <div class="chart-card">
           <h3 class="chart-title">Отзывы по категориям</h3>
-          <Pie :data="reviewsByCategoryChart" :options="chartOptions" />
+          <!-- ⚠️ Используем специальные настройки с Топ-5 -->
+          <Pie :data="reviewsByCategoryChart" :options="reviewsByCategoryChartOptions" />
         </div>
       </div>
 
@@ -96,6 +98,7 @@
         <!-- Топ объектов в избранном (Horizontal Bar) -->
         <div class="chart-card wide">
           <h3 class="chart-title">Топ объектов в избранном</h3>
+          <!-- ⚠️ Используем обычные настройки -->
           <Bar :data="topFavoritedChart" :options="{ ...chartOptions, indexAxis: 'y' }" />
         </div>
       </div>
@@ -105,12 +108,14 @@
         <!-- Распределение оценок (Doughnut) -->
         <div class="chart-card">
           <h3 class="chart-title">Распределение оценок</h3>
+          <!-- ⚠️ Используем обычные настройки -->
           <Doughnut :data="ratingDistributionChart" :options="chartOptions" />
         </div>
         
         <!-- Топ по отзывам (Bar) -->
         <div class="chart-card">
           <h3 class="chart-title">Топ объектов по отзывам</h3>
+          <!-- ⚠️ Используем обычные настройки -->
           <Bar :data="topReviewedChart" :options="{ ...chartOptions, indexAxis: 'y' }" />
         </div>
       </div>
@@ -118,6 +123,7 @@
       <!-- Активность по времени (Line) -->
       <div class="chart-card full-width">
         <h3 class="chart-title">Активность за период</h3>
+        <!-- ⚠️ Используем обычные настройки -->
         <Line :data="activityTimelineChart" :options="timelineChartOptions" />
       </div>
 
@@ -211,21 +217,38 @@ const chartColors = {
   bg: 'rgba(22, 143, 4, 0.1)'
 }
 
+// 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (БЕЗ топ-5 объектов)
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
     legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } },
     tooltip: { 
-      backgroundColor: 'rgba(255,255,255,0.98)',
+      backgroundColor: 'rgba(255,255,255,0.95)',
       titleColor: '#1a1a1a',
       bodyColor: '#475569',
       borderColor: '#e2e8f0',
       borderWidth: 1,
-      padding: 16,
-      displayColors: true,
-      // Кастомный tooltip для круговой диаграммы отзывов
+      padding: 12,
+      displayColors: true
+      // Здесь НЕТ callbacks.afterBody
+    }
+  },
+  scales: {
+    x: { ticks: { font: { family: 'Inter', size: 10 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+    y: { beginAtZero: true, ticks: { font: { family: 'Inter', size: 10 } }, grid: { color: 'rgba(0,0,0,0.05)' } }
+  }
+}
+
+// 2. СПЕЦИАЛЬНЫЕ НАСТРОЙКИ ТОЛЬКО ДЛЯ PIE CHART (С топ-5 объектами)
+const reviewsByCategoryChartOptions = {
+  ...chartOptions, // Копируем базовые стили
+  plugins: {
+    ...chartOptions.plugins,
+    tooltip: {
+      ...chartOptions.plugins.tooltip,
       callbacks: {
+        // ⚠️ ЭТО ТОЛЬКО ДЛЯ ОТЗЫВОВ ПО КАТЕГОРИЯМ
         afterBody: function(context) {
           const index = context[0].dataIndex
           const category = reviewsByCategory.value[index]
@@ -234,13 +257,12 @@ const chartOptions = {
             return []
           }
           
-          const lines = [''] // Пустая строка для отступа
-          lines.push('Объекты:')
+          const lines = [''] // Отступ
+          lines.push('📍 Топ-5 объектов:')
           
           category.top_objects.forEach((obj, idx) => {
-            // Если названия нет или пустое
             const name = obj.name && obj.name.trim() ? 
-              (obj.name.length > 25 ? obj.name.slice(0, 25) + '...' : obj.name) : 
+              (obj.name.length > 20 ? obj.name.slice(0, 20) + '...' : obj.name) : 
               'Без названия'
             const type = obj.type || 'Не указан'
             lines.push(`  ${idx + 1}. ${name} (${obj.count}) (${type})`)
@@ -250,10 +272,6 @@ const chartOptions = {
         }
       }
     }
-  },
-  scales: {
-    x: { ticks: { font: { family: 'Inter', size: 10 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
-    y: { beginAtZero: true, ticks: { font: { family: 'Inter', size: 10 } }, grid: { color: 'rgba(0,0,0,0.05)' } }
   }
 }
 
@@ -712,21 +730,4 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 640px) {
-  .metric-card {
-    padding: 16px;
-  }
-  
-  .metric-value {
-    font-size: 22px;
-  }
-  
-  .chart-card {
-    padding: 16px;
-  }
-  
-  .chart-title {
-    font-size: 14px;
-  }
-}
 </style>

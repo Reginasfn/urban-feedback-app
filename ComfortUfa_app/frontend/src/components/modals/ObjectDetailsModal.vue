@@ -803,6 +803,7 @@ const typeText = (text, speed = 30) => {
   })
 }
 
+// Загрузка AI сводки
 const loadAiSummary = async () => {
   // Проверяем, что отзывы уже загружены
   if (!reviews.value || reviews.value.length === 0) {
@@ -813,14 +814,35 @@ const loadAiSummary = async () => {
   aiSummaryLoading.value = true
   displayedText.value = ''
   
-  // Имитация задержки API
-  setTimeout(async () => {
-    aiSummaryLoading.value = false
-    aiSummary.value = fullSummaryText
+  try {
+    // Готовим данные для отправки
+    const reviewsData = reviews.value.map(review => ({
+      text: review.text,
+      rating: review.rating,
+      category: review.category || 'unknown'
+    }))
+    
+    console.log('[AI] Отправка запроса с', reviewsData.length, 'отзывами')
+    
+    // Вызываем наш бэкенд
+    const response = await api.post('/api/reviews/ai-summary', {
+      object_id: props.object.id_object,
+      reviews: reviewsData
+    })
+    
+    console.log('[AI] Получен ответ:', response.data)
+    
+    aiSummary.value = response.data.summary
     
     // Запускаем эффект печатающей машинки
-    await typeText(fullSummaryText, 30)
-  }, 1000)
+    await typeText(aiSummary.value, 25)
+    
+  } catch (error) {
+    console.error('[AI Summary] Error:', error)
+    aiSummary.value = "Не удалось сгенерировать сводку. Попробуйте позже."
+  } finally {
+    aiSummaryLoading.value = false
+  }
 }
 
 // Триггер загрузки отзывов
@@ -828,8 +850,8 @@ watch(
   () => [props.visible, props.object?.id_object],
   async ([isVisible, objectId]) => {
     if (isVisible && objectId) {
-      await loadReviews()  // Ждём загрузки отзывов
-      await loadAiSummary()  // Потом загружаем AI сводку
+      await loadReviews()      // Сначала загружаем отзывы
+      await loadAiSummary()    // Потом AI сводку
     }
   },
   { immediate: true }
