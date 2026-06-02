@@ -193,7 +193,6 @@
           <TabPanel header="Мои отзывы">
             <!-- Фильтры и поиск -->
             <div class="filters-bar">
-              <!-- Поиск -->
               <div class="filter-group">
                 <i class="pi pi-search filter-icon"></i>
                 <InputText 
@@ -204,7 +203,6 @@
                 />
               </div>
               
-              <!-- Фильтр по типу -->
               <div class="filter-group">
                 <Dropdown 
                   v-model="reviewsTypeFilter" 
@@ -217,7 +215,6 @@
                 />
               </div>
               
-              <!-- Сортировка -->
               <div class="filter-group">
                 <Dropdown 
                   v-model="reviewsSort" 
@@ -229,7 +226,6 @@
                 />
               </div>
               
-              <!-- Сброс фильтров -->
               <Button 
                 v-if="hasReviewsFilters"
                 icon="pi pi-times" 
@@ -267,7 +263,6 @@
                           <div class="object-meta-info">
                             <span class="object-type-badge">{{ review.type_name || review.object_type || 'Объект' }}</span>
                             <h4 class="object-name">{{ review.object_name }}</h4>
-                            <!-- Адрес объекта: показываем адрес или "Адрес не указан" -->
                             <p class="object-address">
                               <i class="pi pi-map-marker"></i> {{ review.object_address || 'Адрес не указан' }}
                             </p>
@@ -299,7 +294,6 @@
               </Card>
             </div>
             
-            <!-- Счётчик результатов -->
             <div v-if="!loadingReviews && filteredReviews.length > 0" class="results-count">
               Показано {{ filteredReviews.length }} из {{ userReviews.length }}
             </div>
@@ -309,7 +303,6 @@
           <TabPanel header="Мои объекты">
             <!-- Фильтры и поиск -->
             <div class="filters-bar">
-              <!-- Поиск -->
               <div class="filter-group">
                 <i class="pi pi-search filter-icon"></i>
                 <InputText 
@@ -320,7 +313,6 @@
                 />
               </div>
               
-              <!-- Фильтр по типу -->
               <div class="filter-group">
                 <Dropdown 
                   v-model="objectsTypeFilter" 
@@ -333,7 +325,6 @@
                 />
               </div>
               
-              <!-- Сортировка -->
               <div class="filter-group">
                 <Dropdown 
                   v-model="objectsSort" 
@@ -345,7 +336,6 @@
                 />
               </div>
               
-              <!-- Сброс фильтров -->
               <Button 
                 v-if="hasObjectsFilters"
                 icon="pi pi-times" 
@@ -371,7 +361,6 @@
             <div v-else class="cards-grid">
               <Card v-for="obj in filteredObjects" :key="obj.id_object" class="data-card review-card">
                 <template #content>
-                  <!-- Шапка: тип + иконка -->
                   <div class="card-header">
                     <div class="object-info">
                       <div class="object-preview">
@@ -382,7 +371,6 @@
                         <div class="object-meta-info">
                           <span class="object-type-badge">{{ obj.type_name || 'Объект' }}</span>
                           <h4 class="object-name">{{ obj.name }}</h4>
-                          <!-- Адрес объекта: используем obj.address -->
                           <p v-if="obj.address" class="object-address">
                             <i class="pi pi-map-marker"></i> {{ obj.address }}
                           </p>
@@ -392,7 +380,6 @@
                     </div>
                   </div>
                   
-                  <!-- Рейтинг + дата -->
                   <div class="card-meta">
                     <span class="rating-badge">
                       <i class="pi pi-star-fill"></i> {{ (obj.rating_avg ?? 0).toFixed(1) }}/5
@@ -402,7 +389,6 @@
                     </span>
                   </div>
                   
-                  <!-- Действия -->
                   <div class="card-actions">
                     <Button icon="pi pi-map" label="На карте" text size="small" @click="showObjectOnMap(obj)" />
                     <Button icon="pi pi-info-circle" label="Подробнее" text size="small" @click="openObjectDetails(obj)" />
@@ -411,7 +397,6 @@
               </Card>
             </div>
             
-            <!-- Счётчик результатов -->
             <div v-if="!loadingObjects && filteredObjects.length > 0" class="results-count">
               Показано {{ filteredObjects.length }} из {{ userObjects.length }}
             </div>
@@ -422,13 +407,12 @@
 
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ОБЪЕКТА -->
+    <!-- ✅ ИСПРАВЛЕННАЯ МОДАЛКА: v-show + v-model:visible -->
     <ObjectDetailsModal
-      v-if="modalObject"
+      v-show="true"
       :object="modalObject"
-      :visible="!!modalObject"
+      v-model:visible="modalVisible"
       :review-to-edit="reviewToEdit"
-      @update:visible="val => { if (!val) { modalObject = null; reviewToEdit = null } }"
       @review-submitted="onReviewSubmitted"
       @review-updated="onReviewUpdated"
       @go-to-map="showOnMapFromModal"
@@ -437,893 +421,824 @@
   </div>
 </template>
 
-
 <script>
-  import axios from 'axios'
-  import Card from 'primevue/card'
-  import InputText from 'primevue/inputtext'
-  import InputMask from 'primevue/inputmask'
-  import Password from 'primevue/password'
-  import Button from 'primevue/button'
-  import Tag from 'primevue/tag'
-  import Divider from 'primevue/divider'
-  import TabView from 'primevue/tabview'
-  import TabPanel from 'primevue/tabpanel'
-  import Dropdown from 'primevue/dropdown'
-  import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
+import axios from 'axios'
+import Card from 'primevue/card'
+import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
+import Password from 'primevue/password'
+import Button from 'primevue/button'
+import Tag from 'primevue/tag'
+import Divider from 'primevue/divider'
+import TabView from 'primevue/tabview'
+import TabPanel from 'primevue/tabpanel'
+import Dropdown from 'primevue/dropdown'
+import ObjectDetailsModal from '@/components/modals/ObjectDetailsModal.vue'
 
-  export default {
-    name: 'ProfileView',
-    components: { 
-      Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, Dropdown, ObjectDetailsModal
+export default {
+  name: 'ProfileView',
+  components: { 
+    Card, InputText, InputMask, Password, Button, Tag, Divider, TabView, TabPanel, Dropdown, ObjectDetailsModal
+  },
+  
+  data() {
+    return {
+      // Данные профиля пользователя
+      profile: {
+        id_user: null,
+        email: '',
+        nickname: '',
+        phone: '',
+        role_name: '',
+        created_at: null
+      },
+      
+      // Статистика активности
+      activity: {
+        total_reviews: 0,
+        total_favorites: 0,
+        total_objects_added: 0
+      },
+      
+      // Форма для редактирования профиля
+      form: {
+        nickname: '',
+        email: '',
+        phone: '',
+        current_password: '',
+        new_password: ''
+      },
+      
+      errors: {},
+      isEditing: false,
+      saving: false,
+      loading: true,
+      loadingActivity: true,
+      
+      // Данные для вкладок
+      userReviews: [],
+      userObjects: [],
+      loadingReviews: false,
+      loadingObjects: false,
+      
+      // Активная вкладка
+      activeTabIndex: 0,
+      
+      // ✅ НОВОЕ: Управление видимостью модалки через v-model
+      modalVisible: false,
+      
+      // Модальный объект
+      modalObject: null,
+      
+      // Отзыв для редактирования
+      reviewToEdit: null,
+      
+      // Настройка позиции скролла
+      mapScrollPosition: 165,
+      
+      // Фильтры и сортировка для отзывов
+      reviewsSearch: '',
+      reviewsTypeFilter: null,
+      reviewsSort: 'newest',
+      
+      // Фильтры и сортировка для объектов
+      objectsSearch: '',
+      objectsTypeFilter: null,
+      objectsSort: 'newest',
+      
+      // Опции сортировки
+      sortOptions: [
+        { label: 'Сначала новые', value: 'newest' },
+        { label: 'Сначала старые', value: 'oldest' },
+        { label: 'По рейтингу', value: 'rating' },
+        { label: 'По названию', value: 'name' }
+      ]
+    }
+  },
+  
+  computed: {
+    uniqueReviewTypes() {
+      const types = [...new Set(this.userReviews.map(r => r.type_name || r.object_type).filter(t => t))]
+      return [
+        { label: 'Все типы', value: null },
+        ...types.map(t => ({ label: t, value: t }))
+      ]
     },
     
-    data() {
-      return {
-        // Данные профиля пользователя
-        profile: {
-          id_user: null,
-          email: '',
-          nickname: '',
-          phone: '',
-          role_name: '',
-          created_at: null
-        },
-        
-        // Статистика активности
-        activity: {
+    uniqueObjectTypes() {
+      const types = [...new Set(this.userObjects.map(o => o.type_name).filter(t => t))]
+      return [
+        { label: 'Все типы', value: null },
+        ...types.map(t => ({ label: t, value: t }))
+      ]
+    },
+    
+    hasReviewsFilters() {
+      return this.reviewsSearch || this.reviewsTypeFilter || this.reviewsSort !== 'newest'
+    },
+    
+    hasObjectsFilters() {
+      return this.objectsSearch || this.objectsTypeFilter || this.objectsSort !== 'newest'
+    },
+    
+    filteredReviews() {
+      let result = [...this.userReviews]
+      
+      if (this.reviewsSearch) {
+        const query = this.reviewsSearch.toLowerCase()
+        result = result.filter(r => 
+          (r.object_name && r.object_name.toLowerCase().includes(query)) ||
+          (r.object_address && r.object_address.toLowerCase().includes(query)) ||
+          (r.text && r.text.toLowerCase().includes(query))
+        )
+      }
+      
+      if (this.reviewsTypeFilter) {
+        result = result.filter(r => (r.type_name || r.object_type) === this.reviewsTypeFilter)
+      }
+      
+      switch (this.reviewsSort) {
+        case 'newest':
+          result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          break
+        case 'oldest':
+          result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+          break
+        case 'rating':
+          result.sort((a, b) => (b.rating_avg || b.rating || 0) - (a.rating_avg || a.rating || 0))
+          break
+        case 'name':
+          result.sort((a, b) => (a.object_name || '').localeCompare(b.object_name || ''))
+          break
+      }
+      
+      return result
+    },
+    
+    filteredObjects() {
+      let result = [...this.userObjects]
+      
+      if (this.objectsSearch) {
+        const query = this.objectsSearch.toLowerCase()
+        result = result.filter(o => 
+          (o.name && o.name.toLowerCase().includes(query)) ||
+          (o.address && o.address.toLowerCase().includes(query))
+        )
+      }
+      
+      if (this.objectsTypeFilter) {
+        result = result.filter(o => o.type_name === this.objectsTypeFilter)
+      }
+      
+      switch (this.objectsSort) {
+        case 'newest':
+          result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          break
+        case 'oldest':
+          result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+          break
+        case 'rating':
+          result.sort((a, b) => (b.rating_avg || 0) - (a.rating_avg || 0))
+          break
+        case 'name':
+          result.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+          break
+      }
+      
+      return result
+    }
+  },
+  
+  async mounted() {
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      this.$router.push('/auth')
+      return
+    }
+    
+    await Promise.all([
+      this.fetchProfile(),
+      this.fetchActivity(),
+      this.fetchUserReviews(),
+      this.fetchUserObjects()
+    ])
+  },
+  
+  methods: {
+    onTabChange(index) {
+      if (index === 0) {
+        this.resetReviewsFilters()
+      } else if (index === 1) {
+        this.resetObjectsFilters()
+      }
+    },
+    
+    applyReviewsFilters() {},
+    applyObjectsFilters() {},
+    
+    resetReviewsFilters() {
+      this.reviewsSearch = ''
+      this.reviewsTypeFilter = null
+      this.reviewsSort = 'newest'
+    },
+    
+    resetObjectsFilters() {
+      this.objectsSearch = ''
+      this.objectsTypeFilter = null
+      this.objectsSort = 'newest'
+    },
+    
+    async fetchProfile() {
+      try {
+        this.loading = true
+        const response = await axios.get('http://localhost:8000/api/users/me', {
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+        })
+        this.profile = response.data
+        this.form = {
+          nickname: response.data.nickname,
+          email: response.data.email,
+          phone: response.data.phone,
+          current_password: '',
+          new_password: ''
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки профиля:', error)
+        if (error.response?.status === 401) {
+          this.handleLogout()
+          return
+        }
+        this.$toast?.add({
+          severity: 'error',
+          summary: 'Ошибка',
+          detail: 'Не удалось загрузить данные профиля',
+          life: 3000,
+          styleClass: 'my-error-toast'
+        })
+      } finally {
+        this.loading = false
+      }
+    },
+    
+    async fetchActivity() {
+      try {
+        this.loadingActivity = true
+        const response = await axios.get('http://localhost:8000/api/users/me/activity', {
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+        })
+        this.activity = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки активности:', error)
+        this.activity = {
           total_reviews: 0,
           total_favorites: 0,
           total_objects_added: 0
-        },
-        
-        // Форма для редактирования профиля
-        form: {
-          nickname: '',
-          email: '',
-          phone: '',
-          current_password: '',
-          new_password: ''
-        },
-        
-        errors: {},
-        isEditing: false,
-        saving: false,
-        loading: true,
-        loadingActivity: true,
-        
-        // Данные для вкладок
-        userReviews: [],
-        userObjects: [],
-        loadingReviews: false,
-        loadingObjects: false,
-        
-        // Активная вкладка
-        activeTabIndex: 0,
-        
-        // Модальное окно
-        modalObject: null,
-        
-        // Отзыв для редактирования
-        reviewToEdit: null,
-        
-        // Настройка позиции скролла при переходе на карту
-        mapScrollPosition: 165,
-        
-        // ===== ФИЛЬТРЫ И СОРТИРОВКА ДЛЯ ОТЗЫВОВ =====
-        reviewsSearch: '',
-        reviewsTypeFilter: null,
-        reviewsSort: 'newest',
-        
-        // ===== ФИЛЬТРЫ И СОРТИРОВКА ДЛЯ ОБЪЕКТОВ =====
-        objectsSearch: '',
-        objectsTypeFilter: null,
-        objectsSort: 'newest',
-        
-        // Опции сортировки
-        sortOptions: [
-          { label: 'Сначала новые', value: 'newest' },
-          { label: 'Сначала старые', value: 'oldest' },
-          { label: 'По рейтингу', value: 'rating' },
-          { label: 'По названию', value: 'name' }
-        ]
+        }
+      } finally {
+        this.loadingActivity = false
       }
     },
     
-    computed: {
-      // Уникальные типы для фильтра отзывов
-      uniqueReviewTypes() {
-        const types = [...new Set(this.userReviews.map(r => r.type_name || r.object_type).filter(t => t))]
-        return [
-          { label: 'Все типы', value: null },
-          ...types.map(t => ({ label: t, value: t }))
-        ]
-      },
-      
-      // Уникальные типы для фильтра объектов
-      uniqueObjectTypes() {
-        const types = [...new Set(this.userObjects.map(o => o.type_name).filter(t => t))]
-        return [
-          { label: 'Все типы', value: null },
-          ...types.map(t => ({ label: t, value: t }))
-        ]
-      },
-      
-      // Есть ли активные фильтры для отзывов
-      hasReviewsFilters() {
-        return this.reviewsSearch || this.reviewsTypeFilter || this.reviewsSort !== 'newest'
-      },
-      
-      // Есть ли активные фильтры для объектов
-      hasObjectsFilters() {
-        return this.objectsSearch || this.objectsTypeFilter || this.objectsSort !== 'newest'
-      },
-      
-      // Отфильтрованные и отсортированные отзывы
-      filteredReviews() {
-        let result = [...this.userReviews]
+    async fetchUserReviews() {
+      try {
+        this.loadingReviews = true
+        const response = await axios.get('http://localhost:8000/api/users/me/reviews', {
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+        })
         
-        // Поиск
-        if (this.reviewsSearch) {
-          const query = this.reviewsSearch.toLowerCase()
-          result = result.filter(r => 
-            (r.object_name && r.object_name.toLowerCase().includes(query)) ||
-            (r.object_address && r.object_address.toLowerCase().includes(query)) ||
-            (r.text && r.text.toLowerCase().includes(query))
-          )
-        }
+        const reviews = response.data.map(review => ({
+          ...review,
+          id_object: review.object?.id_object,
+          object_name: review.object?.name,
+          object_type: review.object?.type,
+          type_name: review.object?.type,
+          object_address: null,  
+          coords: review.object?.coords,
+          latitude: review.object?.coords?.[0],
+          longitude: review.object?.coords?.[1],
+          rating_avg: review.object?.rating_avg,
+          rating_count: review.object?.rating_count
+        }))
         
-        // Фильтр по типу
-        if (this.reviewsTypeFilter) {
-          result = result.filter(r => (r.type_name || r.object_type) === this.reviewsTypeFilter)
-        }
+        const reviewsWithAddresses = await Promise.all(
+          reviews.map(async (review) => {
+            if (review.id_object && !review.object?.address) {
+              try {
+                const response = await axios.get('http://localhost:8000/api/objects/' + review.id_object)
+                const fullObject = response.data
+                return {
+                  ...review,
+                  object_address: fullObject.address || 'Адрес не указан',
+                  coords: fullObject.coords || review.coords,
+                  latitude: fullObject.coords?.[0] || review.latitude,
+                  longitude: fullObject.coords?.[1] || review.longitude,
+                  rating_avg: fullObject.rating_avg || review.rating_avg,
+                  rating_count: fullObject.rating_count || review.rating_count
+                }
+              } catch (error) {
+                console.error('Не удалось загрузить объект ' + review.id_object + ':', error)
+                return { ...review, object_address: 'Адрес не указан' }
+              }
+            }
+            return {
+              ...review,
+              object_address: review.object?.address || review.address || 'Адрес не указан'
+            }
+          })
+        )
         
-        // Сортировка
-        switch (this.reviewsSort) {
-          case 'newest':
-            result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-            break
-          case 'oldest':
-            result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-            break
-          case 'rating':
-            result.sort((a, b) => (b.rating_avg || b.rating || 0) - (a.rating_avg || a.rating || 0))
-            break
-          case 'name':
-            result.sort((a, b) => (a.object_name || '').localeCompare(b.object_name || ''))
-            break
-        }
-        
-        return result
-      },
-      
-      // Отфильтрованные и отсортированные объекты
-      filteredObjects() {
-        let result = [...this.userObjects]
-        
-        // Поиск
-        if (this.objectsSearch) {
-          const query = this.objectsSearch.toLowerCase()
-          result = result.filter(o => 
-            (o.name && o.name.toLowerCase().includes(query)) ||
-            (o.address && o.address.toLowerCase().includes(query))
-          )
-        }
-        
-        // Фильтр по типу
-        if (this.objectsTypeFilter) {
-          result = result.filter(o => o.type_name === this.objectsTypeFilter)
-        }
-        
-        // Сортировка
-        switch (this.objectsSort) {
-          case 'newest':
-            result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-            break
-          case 'oldest':
-            result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-            break
-          case 'rating':
-            result.sort((a, b) => (b.rating_avg || 0) - (a.rating_avg || 0))
-            break
-          case 'name':
-            result.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-            break
-        }
-        
-        return result
+        this.userReviews = reviewsWithAddresses
+      } catch (error) {
+        console.error('Ошибка загрузки отзывов:', error)
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить отзывы', life: 3000, styleClass: 'my-error-toast' })
+      } finally {
+        this.loadingReviews = false
       }
     },
     
-    async mounted() {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        this.$router.push('/auth')
+    async fetchUserObjects() {
+      try {
+        this.loadingObjects = true
+        const response = await axios.get('http://localhost:8000/api/users/me/objects', {
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+        })
+        this.userObjects = response.data.map(obj => ({
+          ...obj,
+          type_name: obj.type_name || obj.type || 'Объект',
+          rating_avg: obj.rating_avg ?? obj.rating ?? null,
+          rating_count: obj.rating_count ?? 0
+        }))
+      } catch (error) {
+        console.error('Ошибка загрузки объектов:', error)
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объекты', life: 3000, styleClass: 'my-error-toast' })
+      } finally {
+        this.loadingObjects = false
+      }
+    },
+    
+    startEditing() {
+      this.isEditing = true
+      this.errors = {}
+      this.form.current_password = ''
+      this.form.new_password = ''
+    },
+    
+    cancelEditing() {
+      this.isEditing = false
+      this.errors = {}
+      this.form = {
+        nickname: this.profile.nickname,
+        email: this.profile.email,
+        phone: this.profile.phone,
+        current_password: '',
+        new_password: ''
+      }
+    },
+    
+    validateForm() {
+      this.errors = {}
+      
+      if (!this.form.nickname?.trim()) {
+        this.errors.nickname = 'Введите никнейм'
+      } else if (this.form.nickname.length < 3) {
+        this.errors.nickname = 'Минимум 3 символа'
+      } else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
+        this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
+      }
+      
+      if (!this.form.email?.trim()) {
+        this.errors.email = 'Введите email'
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.form.email)) {
+        this.errors.email = 'Некорректный email'
+      }
+      
+      if (this.form.new_password && !this.form.current_password) {
+        this.errors.current_password = 'Введите текущий пароль для подтверждения'
+      }
+      
+      return Object.keys(this.errors).length === 0
+    },
+    
+    async saveProfile() {
+      if (!this.validateForm()) {
+        this.$toast?.add({
+          severity: 'warn',
+          summary: 'Проверьте форму',
+          detail: 'Исправьте ошибки в полях',
+          life: 3000,
+          styleClass: 'my-big-toast'
+        })
         return
       }
       
-      // Загружаем все данные параллельно
-      await Promise.all([
-        this.fetchProfile(),
-        this.fetchActivity(),
-        this.fetchUserReviews(),
-        this.fetchUserObjects()
-      ])
+      this.saving = true
+      
+      try {
+        const payload = {}
+        
+        if (this.form.nickname !== this.profile.nickname) {
+          payload.nickname = this.form.nickname.trim()
+        }
+        if (this.form.email !== this.profile.email) {
+          payload.email = this.form.email.trim().toLowerCase()
+        }
+        if (this.form.phone !== this.profile.phone) {
+          payload.phone = this.form.phone || null
+        }
+        if (this.form.current_password) {
+          payload.current_password = this.form.current_password
+        }
+        if (this.form.new_password) {
+          payload.new_password = this.form.new_password
+        }
+        
+        if (Object.keys(payload).length === 0) {
+          this.$toast?.add({
+            severity: 'info',
+            summary: 'Информация',
+            detail: 'Нет изменений для сохранения',
+            life: 2000,
+            styleClass: 'my-info-toast'
+          })
+          this.cancelEditing()
+          return
+        }
+        
+        const response = await axios.put(
+          'http://localhost:8000/api/users/me',
+          new URLSearchParams(payload),
+          {
+            headers: { 
+              'Authorization': 'Bearer ' + localStorage.getItem('auth_token'),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          }
+        )
+        
+        this.profile = response.data
+        localStorage.setItem('user', JSON.stringify({
+          id: response.data.id_user,
+          nickname: response.data.nickname,
+          role: response.data.role_name
+        }))
+        
+        window.dispatchEvent(new CustomEvent('user-updated', {
+          detail: { user: response.data }
+        }))
+        
+        this.isEditing = false
+        this.$toast?.add({
+          severity: 'success',
+          summary: 'Успешно',
+          detail: 'Данные профиля обновлены',
+          life: 3000,
+          styleClass: 'my-success-toast'
+        })
+        
+      } catch (error) {
+        console.error('Ошибка сохранения:', error)
+        const message = error.response?.data?.detail || 'Не удалось сохранить изменения'
+        this.$toast?.add({
+          severity: 'error',
+          summary: 'Ошибка',
+          detail: message,
+          life: 4000,
+          styleClass: 'my-error-toast'
+        })
+      } finally {
+        this.saving = false
+      }
     },
     
-    methods: {
-      // Переключение вкладки - сбрасываем фильтры
-      onTabChange(index) {
-        if (index === 0) {
-          this.resetReviewsFilters()
-        } else if (index === 1) {
-          this.resetObjectsFilters()
+    switchToTab(index) {
+      this.activeTabIndex = index
+      this.$nextTick(() => {
+        const dashboard = document.querySelector('.dashboard-section')
+        if (dashboard) {
+          const rect = dashboard.getBoundingClientRect()
+          const offsetTop = rect.top + window.pageYOffset - 150
+          window.scrollTo({ top: offsetTop, behavior: 'smooth' })
         }
-      },
+      })
+    },
+    
+    goToFavorites() {
+      this.$router.push('/favorites')
+    },
+    
+    // ✅ ИСПРАВЛЕНО: Открытие модалки с редактированием
+    async openObjectFromReview(review) {
+      const objectId = review.id_object || review.object?.id_object || review.object_id
       
-      // Применение фильтров для отзывов
-      applyReviewsFilters() {
-        // Computed property автоматически пересчитается
-      },
-      
-      // Применение фильтров для объектов
-      applyObjectsFilters() {
-        // Computed property автоматически пересчитается
-      },
-      
-      // Сброс фильтров для отзывов
-      resetReviewsFilters() {
-        this.reviewsSearch = ''
-        this.reviewsTypeFilter = null
-        this.reviewsSort = 'newest'
-      },
-      
-      // Сброс фильтров для объектов
-      resetObjectsFilters() {
-        this.objectsSearch = ''
-        this.objectsTypeFilter = null
-        this.objectsSort = 'newest'
-      },
-      
-      // Загрузка данных профиля
-      async fetchProfile() {
+      if (objectId) {
         try {
-          this.loading = true
-          const response = await axios.get('http://localhost:8000/api/users/me', {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-          })
-          this.profile = response.data
-          this.form = {
-            nickname: response.data.nickname,
-            email: response.data.email,
-            phone: response.data.phone,
-            current_password: '',
-            new_password: ''
-          }
-        } catch (error) {
-          console.error('Ошибка загрузки профиля:', error)
-          if (error.response?.status === 401) {
-            this.handleLogout()
-            return
-          }
-          this.$toast?.add({
-            severity: 'error',
-            summary: 'Ошибка',
-            detail: 'Не удалось загрузить данные профиля',
-            life: 3000,
-            styleClass: 'my-error-toast'
-          })
-        } finally {
-          this.loading = false
-        }
-      },
-      
-      // Загрузка статистики активности
-      async fetchActivity() {
-        try {
-          this.loadingActivity = true
-          const response = await axios.get('http://localhost:8000/api/users/me/activity', {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-          })
-          this.activity = response.data
-        } catch (error) {
-          console.error('Ошибка загрузки активности:', error)
-          this.activity = {
-            total_reviews: 0,
-            total_favorites: 0,
-            total_objects_added: 0
-          }
-        } finally {
-          this.loadingActivity = false
-        }
-      },
-      
-      async fetchUserReviews() {
-        try {
-          this.loadingReviews = true
-          const response = await axios.get('http://localhost:8000/api/users/me/reviews', {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-          })
-          
-          const reviews = response.data.map(review => ({
-            ...review,
-            id_object: review.object?.id_object,
-            object_name: review.object?.name,
-            object_type: review.object?.type,
-            type_name: review.object?.type,
-            object_address: null,  
-            coords: review.object?.coords,
-            latitude: review.object?.coords?.[0],
-            longitude: review.object?.coords?.[1],
-            rating_avg: review.object?.rating_avg,
-            rating_count: review.object?.rating_count
-          }))
-          
-          const reviewsWithAddresses = await Promise.all(
-            reviews.map(async (review) => {
-              if (review.id_object && !review.object?.address) {
-                try {
-                  const response = await axios.get('http://localhost:8000/api/objects/' + review.id_object)
-                  const fullObject = response.data
-                  
-                  return {
-                    ...review,
-                    object_address: fullObject.address || 'Адрес не указан',
-                    coords: fullObject.coords || review.coords,
-                    latitude: fullObject.coords?.[0] || review.latitude,
-                    longitude: fullObject.coords?.[1] || review.longitude,
-                    rating_avg: fullObject.rating_avg || review.rating_avg,
-                    rating_count: fullObject.rating_count || review.rating_count
-                  }
-                } catch (error) {
-                  console.error('Не удалось загрузить объект ' + review.id_object + ':', error)
-                  return {
-                    ...review,
-                    object_address: 'Адрес не указан'
-                  }
-                }
-              }
-              
-              return {
-                ...review,
-                object_address: review.object?.address || review.address || 'Адрес не указан'
-              }
-            })
-          )
-          
-          this.userReviews = reviewsWithAddresses
-        } catch (error) {
-          console.error('Ошибка загрузки отзывов:', error)
-          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить отзывы', life: 3000, styleClass: 'my-error-toast' })
-        } finally {
-          this.loadingReviews = false
-        }
-      },
-      
-      // Загрузка объектов пользователя
-      async fetchUserObjects() {
-        try {
-          this.loadingObjects = true
-          const response = await axios.get('http://localhost:8000/api/users/me/objects', {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-          })
-          
-          // Обработка данных: нормализация полей
-          this.userObjects = response.data.map(obj => ({
-            ...obj,
-            type_name: obj.type_name || obj.type || 'Объект',
-            rating_avg: obj.rating_avg ?? obj.rating ?? null,
-            rating_count: obj.rating_count ?? 0
-          }))
-          
-        } catch (error) {
-          console.error('Ошибка загрузки объектов:', error)
-          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объекты', life: 3000, styleClass: 'my-error-toast' })
-        } finally {
-          this.loadingObjects = false
-        }
-      },
-      
-      // Начало редактирования профиля
-      startEditing() {
-        this.isEditing = true
-        this.errors = {}
-        this.form.current_password = ''
-        this.form.new_password = ''
-      },
-      
-      // Отмена редактирования
-      cancelEditing() {
-        this.isEditing = false
-        this.errors = {}
-        this.form = {
-          nickname: this.profile.nickname,
-          email: this.profile.email,
-          phone: this.profile.phone,
-          current_password: '',
-          new_password: ''
-        }
-      },
-      
-      // Валидация формы редактирования
-      validateForm() {
-        this.errors = {}
-        
-        if (!this.form.nickname?.trim()) {
-          this.errors.nickname = 'Введите никнейм'
-        } else if (this.form.nickname.length < 3) {
-          this.errors.nickname = 'Минимум 3 символа'
-        } else if (!/^[a-zA-Zа-яА-ЯёЁ0-9]+$/.test(this.form.nickname.trim())) {
-          this.errors.nickname = 'Только буквы и цифры, без пробелов и спецсимволов'
-        }
-        
-        if (!this.form.email?.trim()) {
-          this.errors.email = 'Введите email'
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.form.email)) {
-          this.errors.email = 'Некорректный email'
-        }
-        
-        if (this.form.new_password && !this.form.current_password) {
-          this.errors.current_password = 'Введите текущий пароль для подтверждения'
-        }
-        
-        return Object.keys(this.errors).length === 0
-      },
-      
-      // Сохранение изменений профиля
-      async saveProfile() {
-        if (!this.validateForm()) {
-          this.$toast?.add({
-            severity: 'warn',
-            summary: 'Проверьте форму',
-            detail: 'Исправьте ошибки в полях',
-            life: 3000,
-            styleClass: 'my-big-toast'
-          })
-          return
-        }
-        
-        this.saving = true
-        
-        try {
-          const payload = {}
-          
-          if (this.form.nickname !== this.profile.nickname) {
-            payload.nickname = this.form.nickname.trim()
-          }
-          if (this.form.email !== this.profile.email) {
-            payload.email = this.form.email.trim().toLowerCase()
-          }
-          if (this.form.phone !== this.profile.phone) {
-            payload.phone = this.form.phone || null
-          }
-          if (this.form.current_password) {
-            payload.current_password = this.form.current_password
-          }
-          if (this.form.new_password) {
-            payload.new_password = this.form.new_password
-          }
-          
-          if (Object.keys(payload).length === 0) {
-            this.$toast?.add({
-              severity: 'info',
-              summary: 'Информация',
-              detail: 'Нет изменений для сохранения',
-              life: 2000,
-              styleClass: 'my-info-toast'
-            })
-            this.cancelEditing()
-            return
-          }
-          
-          const response = await axios.put(
-            'http://localhost:8000/api/users/me',
-            new URLSearchParams(payload),
-            {
-              headers: { 
-                'Authorization': 'Bearer ' + localStorage.getItem('auth_token'),
-                'Content-Type': 'application/x-www-form-urlencoded'
-              }
-            }
-          )
-          
-          this.profile = response.data
-          localStorage.setItem('user', JSON.stringify({
-            id: response.data.id_user,
-            nickname: response.data.nickname,
-            role: response.data.role_name
-          }))
-          
-          window.dispatchEvent(new CustomEvent('user-updated', {
-            detail: { user: response.data }
-          }))
-          
-          this.isEditing = false
-          this.$toast?.add({
-            severity: 'success',
-            summary: 'Успешно',
-            detail: 'Данные профиля обновлены',
-            life: 3000,
-            styleClass: 'my-success-toast'
-          })
-          
-        } catch (error) {
-          console.error('Ошибка сохранения:', error)
-          const message = error.response?.data?.detail || 'Не удалось сохранить изменения'
-          this.$toast?.add({
-            severity: 'error',
-            summary: 'Ошибка',
-            detail: message,
-            life: 4000,
-            styleClass: 'my-error-toast'
-          })
-        } finally {
-          this.saving = false
-        }
-      },
-      
-      // Переключение вкладки с прокруткой
-      switchToTab(index) {
-        this.activeTabIndex = index
-        this.$nextTick(() => {
-          const dashboard = document.querySelector('.dashboard-section')
-          if (dashboard) {
-            const rect = dashboard.getBoundingClientRect()
-            const offsetTop = rect.top + window.pageYOffset - 150
-            
-            window.scrollTo({
-              top: offsetTop,
-              behavior: 'smooth'
-            })
-          }
-        })
-      },
-      
-      // Переход в избранное
-      goToFavorites() {
-        this.$router.push('/favorites')
-      },
-      
-      // Открытие объекта из отзыва
-      async openObjectFromReview(review) {
-        const objectId = review.id_object || review.object?.id_object || review.object_id
-        
-        if (objectId) {
-          try {
-            const response = await axios.get('http://localhost:8000/api/objects/' + objectId)
-            this.modalObject = response.data
-            return
-          } catch (error) {
-            console.error('Ошибка загрузки объекта по ID ' + objectId + ':', error)
-          }
-        }
-        
-        const objectName = review.object_name || review.object?.name
-        if (objectName) {
-          try {
-            const response = await axios.get('http://localhost:8000/api/objects', {
-              params: { 
-                search: objectName, 
-                limit: 1,
-                type: review.object_type || review.object?.type
-              }
-            })
-            
-            if (response.data && response.data.length > 0) {
-              this.modalObject = response.data[0]
-              return
-            }
-          } catch (error) {
-            console.error('Ошибка поиска объекта по названию:', error)
-          }
-        }
-        
-        this.$toast?.add({ 
-          severity: 'error', 
-          summary: 'Ошибка', 
-          detail: 'Не удалось найти объект. Возможно, он был удалён.', 
-          life: 4000, 
-          styleClass: 'my-error-toast' 
-        })
-      },
-      
-      // Открытие деталей объекта
-      async openObjectDetails(obj) {
-        try {
-          const response = await axios.get('http://localhost:8000/api/objects/' + obj.id_object)
+          const response = await axios.get('http://localhost:8000/api/objects/' + objectId)
           this.modalObject = response.data
+          return true
+        } catch (error) {
+          console.error('Ошибка загрузки объекта по ID ' + objectId + ':', error)
+        }
+      }
+      
+      const objectName = review.object_name || review.object?.name
+      if (objectName) {
+        try {
+          const response = await axios.get('http://localhost:8000/api/objects', {
+            params: { search: objectName, limit: 1, type: review.object_type || review.object?.type }
+          })
+          if (response.data && response.data.length > 0) {
+            this.modalObject = response.data[0]
+            return true
+          }
+        } catch (error) {
+          console.error('Ошибка поиска объекта по названию:', error)
+        }
+      }
+      
+      this.$toast?.add({ 
+        severity: 'error', 
+        summary: 'Ошибка', 
+        detail: 'Не удалось найти объект. Возможно, он был удалён.', 
+        life: 4000, 
+        styleClass: 'my-error-toast' 
+      })
+      return false
+    },
+    
+    async openObjectDetails(obj) {
+      try {
+        const response = await axios.get('http://localhost:8000/api/objects/' + obj.id_object)
+        this.modalObject = response.data
+        this.modalVisible = true
+      } catch (error) {
+        console.error('Ошибка загрузки объекта:', error)
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объект', life: 3000, styleClass: 'my-error-toast' })
+      }
+    },
+    
+    async showOnMap(review) {
+      const objectId = review.id_object || review.object?.id_object || review.object_id
+      
+      if (!objectId) {
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось найти ID объекта', life: 3000, styleClass: 'my-error-toast' })
+        return
+      }
+      
+      let coords = review.coords || review.object?.coords
+      if (!coords && review.latitude && review.longitude) {
+        coords = [review.latitude, review.longitude]
+      }
+      
+      if (!coords) {
+        try {
+          const response = await axios.get('http://localhost:8000/api/objects/' + objectId, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+          })
+          const fullObject = response.data
+          coords = fullObject.coords || [fullObject.latitude, fullObject.longitude]
+          review.object_name = fullObject.name
+          review.object_type = fullObject.type_name
+          review.object_address = fullObject.address
+          review.rating_avg = fullObject.rating_avg
+          review.rating_count = fullObject.rating_count
         } catch (error) {
           console.error('Ошибка загрузки объекта:', error)
-          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить объект', life: 3000, styleClass: 'my-error-toast' })
-        }
-      },
-      
-      // Переход на карту из отзыва
-      async showOnMap(review) {
-        const objectId = review.id_object || review.object?.id_object || review.object_id
-        
-        if (!objectId) {
-          this.$toast?.add({
-            severity: 'error',
-            summary: 'Ошибка',
-            detail: 'Не удалось найти ID объекта',
-            life: 3000,
-            styleClass: 'my-error-toast'
-          })
+          this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: 'Не удалось загрузить данные объекта', life: 3000, styleClass: 'my-error-toast' })
           return
         }
-        
-        let coords = review.coords || review.object?.coords
-        if (!coords && review.latitude && review.longitude) {
-          coords = [review.latitude, review.longitude]
-        }
-        
-        if (!coords) {
-          try {
-            const response = await axios.get('http://localhost:8000/api/objects/' + objectId, {
-              headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-            })
-            
-            const fullObject = response.data
-            coords = fullObject.coords || [fullObject.latitude, fullObject.longitude]
-            
-            review.object_name = fullObject.name
-            review.object_type = fullObject.type_name
-            review.object_address = fullObject.address
-            review.rating_avg = fullObject.rating_avg
-            review.rating_count = fullObject.rating_count
-            
-          } catch (error) {
-            console.error('Ошибка загрузки объекта:', error)
-            this.$toast?.add({
-              severity: 'error',
-              summary: 'Ошибка',
-              detail: 'Не удалось загрузить данные объекта',
-              life: 3000,
-              styleClass: 'my-error-toast'
-            })
-            return
-          }
-        }
-        
-        const objectName = review.object_name || review.object?.name
-        const objectType = review.object_type || review.object?.type || review.type_name
-        const objectAddress = review.object_address || review.object?.address
-        const ratingAvg = review.rating_avg || review.object?.rating_avg
-        const ratingCount = review.rating_count || review.object?.rating_count
-        
-        await this.$router.push({
-          path: '/map',
-          query: { 
-            focus: coords ? coords[0] + ',' + coords[1] : null,
-            zoom: 17,
-            id: objectId,
-            type: objectType,
-            name: objectName,
-            address: objectAddress || '',
-            rating_avg: ratingAvg,
-            rating_count: ratingCount
-          }
-        })
-        
-        // Прокрутка после перехода
-        this.$nextTick(() => {
-          setTimeout(() => {
-            if (this.mapScrollPosition >= 0) {
-              window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
-            }
-          }, 100)
-        })
-      },
-      
-      // Переход на карту из модалки
-      async showOnMapFromModal(obj) {
-        await this.$router.push({
-          path: '/map',
-          query: { 
-            focus: obj.latitude + ',' + obj.longitude,
-            zoom: 17,
-            id: obj.id_object,
-            type: obj.type_name,
-            name: obj.name,
-            address: obj.address,
-            rating_avg: obj.rating_avg,
-            rating_count: obj.rating_count
-          }
-        })
-        
-        this.$nextTick(() => {
-          setTimeout(() => {
-            if (this.mapScrollPosition >= 0) {
-              window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
-            }
-          }, 100)
-        })
-      },
-      
-      // Переход на карту из вкладки "Мои объекты"
-      async showObjectOnMap(obj) {
-        await this.$router.push({
-          path: '/map',
-          query: { 
-            focus: obj.latitude + ',' + obj.longitude,
-            zoom: 17,
-            id: obj.id_object,
-            type: obj.type_name,
-            name: obj.name,
-            address: obj.address,
-            rating_avg: obj.rating_avg,
-            rating_count: obj.rating_count
-          }
-        })
-        
-        this.$nextTick(() => {
-          setTimeout(() => {
-            if (this.mapScrollPosition >= 0) {
-              window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
-            }
-          }, 100)
-        })
-      },
-      
-      // Редактирование отзыва
-      async editReview(review) {
-        this.reviewToEdit = { ...review }
-        await this.openObjectFromReview(review)
-        
-        if (!this.modalObject) {
-          return
-        }
-        
-        this.$nextTick(() => {
-          console.log('Модалка должна открыться с формой редактирования')
-        })
-      },
-      
-      // Удаление отзыва
-      async confirmDeleteReview(reviewId) {
-        if (!confirm('Вы уверены, что хотите удалить этот отзыв?')) return
-        
-        try {
-          const response = await axios.delete('http://localhost:8000/api/reviews/' + reviewId, {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
-          })
-          
-          if (response.data?.success) {
-            this.userReviews = this.userReviews.filter(r => r.id_review !== reviewId)
-            this.$toast?.add({ 
-              severity: 'success', 
-              summary: 'Удалено', 
-              detail: 'Отзыв успешно удалён', 
-              life: 2000,
-              styleClass: 'my-success-toast'
-            })
-          }
-        } catch (error) {
-          console.error('Ошибка удаления:', error)
-          const message = error.response?.data?.detail || 'Не удалось удалить отзыв'
-          this.$toast?.add({ 
-            severity: 'error', 
-            summary: 'Ошибка', 
-            detail: message, 
-            life: 3000,
-            styleClass: 'my-error-toast'
-          })
-        }
-      },
-      
-      // Заглушка для редактирования объекта
-      editObject(obj) {
-        this.$toast?.add({ 
-          severity: 'info', 
-          summary: 'Редактирование', 
-          detail: 'Функция редактирования объекта в разработке', 
-          life: 3000,
-          styleClass: 'my-info-toast'
-        })
-      },
-      
-      // Обработка отправки отзыва из модалки
-      onReviewSubmitted(result) {
-        if (result.success) {
-          this.fetchUserReviews()
-          this.reviewToEdit = null
-        }
-      },
-      
-      // Обработка обновления отзыва
-      onReviewUpdated(result) {
-        if (result.success) {
-          const idx = this.userReviews.findIndex(r => r.id_review === result.id_review)
-          if (idx !== -1) {
-            this.userReviews[idx] = { ...this.userReviews[idx], ...result }
-          }
-          this.$toast?.add({ 
-            severity: 'success', 
-            summary: 'Обновлено', 
-            detail: 'Отзыв успешно изменён', 
-            life: 2000,
-            styleClass: 'my-success-toast'
-          })
-          this.reviewToEdit = null
-        }
-      },
-      
-      // Получение иконки по типу объекта
-      getTypeIcon(typeName) {
-        const map = {
-          'камера видеонаблюдения': 'pi pi-video', 
-          'кафе': 'pi pi-map-marker', 
-          'фонарь': 'pi pi-lightbulb',
-          'скамейка': 'pi pi-map-marker', 
-          'парк': 'pi pi-map-marker', 
-          'беседка': 'pi pi-building-columns',
-          'остановка': 'pi pi-car', 
-          'детская площадка': 'pi pi-face-smile',
-          'спортивная площадка': 'pi pi-bolt',
-          'урна': 'pi pi-trash',
-          'мусорный контейнер': 'pi pi-trash',
-          'парковка': 'pi pi-car',
-          'пешеходный переход': 'pi pi-directions-alt',
-          'памятник': 'pi pi-flag',
-          'информационный стенд': 'pi pi-info-circle',
-          'цветник': 'pi pi-star',
-          'дорожка': 'pi pi-arrow-right',
-          'ограждение': 'pi pi-th-large'
-        }
-        
-        if (!typeName) {
-          return 'pi pi-map-marker'
-        }
-        
-        const key = Object.keys(map).find(k => typeName.toLowerCase().includes(k))
-        const icon = map[key] || 'pi pi-map-marker'
-        return icon
-      },
-      
-      // Определение цвета тега по категории
-      getCategorySeverity(category) {
-        const map = {
-          'проблема': 'danger', 'предложение': 'info', 'похвала': 'success', 'вопрос': 'warn',
-          'problem': 'danger', 'suggestion': 'info', 'praise': 'success'
-        }
-        return map[category?.toLowerCase()] || 'secondary'
-      },
-      
-      // Получение текста статуса модерации
-      getStatusLabel(status) {
-        const map = { 'approved': 'Одобрен', 'pending': 'На модерации', 'rejected': 'Отклонён' }
-        return map[status] || status
-      },
-      
-      // Определение цвета тега статуса
-      getStatusSeverity(status) {
-        const map = { 'approved': 'success', 'pending': 'warn', 'rejected': 'danger' }
-        return map[status] || 'secondary'
-      },
-      
-      // Форматирование даты
-      formatDate(dateString) {
-        if (!dateString) return '—'
-        return new Date(dateString).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
-      },
-      
-      // Выход из аккаунта
-      handleLogout() {
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('user')
-        window.dispatchEvent(new CustomEvent('auth-change', { detail: { isAuthenticated: false } }))
-        this.$toast?.add({ 
-          severity: 'info',
-          summary: 'Выход',
-          detail: 'Вы вышли из системы',
-          life: 2000,
-          styleClass: 'my-info-toast'
-        })
-        this.$router.push('/')
       }
+      
+      await this.$router.push({
+        path: '/map',
+        query: { 
+          focus: coords ? coords[0] + ',' + coords[1] : null,
+          zoom: 17,
+          id: objectId,
+          type: review.object_type || review.type_name,
+          name: review.object_name,
+          address: review.object_address || '',
+          rating_avg: review.rating_avg,
+          rating_count: review.rating_count
+        }
+      })
+      
+      this.$nextTick(() => {
+        setTimeout(() => {
+          if (this.mapScrollPosition >= 0) {
+            window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+          }
+        }, 100)
+      })
+    },
+    
+    async showOnMapFromModal(obj) {
+      await this.$router.push({
+        path: '/map',
+        query: { 
+          focus: obj.latitude + ',' + obj.longitude,
+          zoom: 17,
+          id: obj.id_object,
+          type: obj.type_name,
+          name: obj.name,
+          address: obj.address,
+          rating_avg: obj.rating_avg,
+          rating_count: obj.rating_count
+        }
+      })
+      
+      this.$nextTick(() => {
+        setTimeout(() => {
+          if (this.mapScrollPosition >= 0) {
+            window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+          }
+        }, 100)
+      })
+    },
+    
+    async showObjectOnMap(obj) {
+      await this.$router.push({
+        path: '/map',
+        query: { 
+          focus: obj.latitude + ',' + obj.longitude,
+          zoom: 17,
+          id: obj.id_object,
+          type: obj.type_name,
+          name: obj.name,
+          address: obj.address,
+          rating_avg: obj.rating_avg,
+          rating_count: obj.rating_count
+        }
+      })
+      
+      this.$nextTick(() => {
+        setTimeout(() => {
+          if (this.mapScrollPosition >= 0) {
+            window.scrollTo({ top: this.mapScrollPosition, behavior: 'auto' })
+          }
+        }, 100)
+      })
+    },
+    
+    // ✅ ИСПРАВЛЕНО: Редактирование отзыва с правильным порядком
+    async editReview(review) {
+      console.log('✏️ editReview вызван:', review.id_review)
+      
+      // 1. Сначала сохраняем отзыв для редактирования
+      this.reviewToEdit = { ...review }
+      
+      // 2. Загружаем полный объект
+      const loaded = await this.openObjectFromReview(review)
+      
+      if (!loaded || !this.modalObject) {
+        console.error('❌ Не удалось загрузить объект для редактирования')
+        this.reviewToEdit = null
+        return
+      }
+      
+      console.log('✅ modalObject загружен:', this.modalObject.id_object)
+      console.log('✅ reviewToEdit установлен:', this.reviewToEdit.id_review)
+      
+      // 3. ✅ ВАЖНО: Сначала показываем модалку, потом в nextTick
+      this.modalVisible = true
+      
+      // 4. Ждём рендер модалки
+      this.$nextTick(() => {
+        console.log('🎯 $nextTick: модалка должна быть в DOM и видима')
+      })
+    },
+    
+    async confirmDeleteReview(reviewId) {
+      if (!confirm('Вы уверены, что хотите удалить этот отзыв?')) return
+      
+      try {
+        const response = await axios.delete('http://localhost:8000/api/reviews/' + reviewId, {
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('auth_token') }
+        })
+        
+        if (response.data?.success) {
+          this.userReviews = this.userReviews.filter(r => r.id_review !== reviewId)
+          this.$toast?.add({ severity: 'success', summary: 'Удалено', detail: 'Отзыв успешно удалён', life: 2000, styleClass: 'my-success-toast' })
+        }
+      } catch (error) {
+        console.error('Ошибка удаления:', error)
+        const message = error.response?.data?.detail || 'Не удалось удалить отзыв'
+        this.$toast?.add({ severity: 'error', summary: 'Ошибка', detail: message, life: 3000, styleClass: 'my-error-toast' })
+      }
+    },
+    
+    editObject(obj) {
+      this.$toast?.add({ severity: 'info', summary: 'Редактирование', detail: 'Функция редактирования объекта в разработке', life: 3000, styleClass: 'my-info-toast' })
+    },
+    
+    onReviewSubmitted(result) {
+      if (result.success) {
+        this.fetchUserReviews()
+        this.reviewToEdit = null
+      }
+    },
+    
+    // ✅ ИСПРАВЛЕНО: Обработка обновления отзыва
+    onReviewUpdated(result) {
+      console.log('🔄 onReviewUpdated:', result)
+      
+      if (result.success) {
+        // Обновляем отзыв в локальном массиве
+        const idx = this.userReviews.findIndex(r => r.id_review === result.id_review)
+        if (idx !== -1) {
+          this.userReviews[idx] = { 
+            ...this.userReviews[idx], 
+            ...result,
+            // Сохраняем поля объекта, если они пришли отдельно
+            object_name: result.object_name || this.userReviews[idx].object_name,
+            object_address: result.object_address || this.userReviews[idx].object_address,
+            type_name: result.type_name || this.userReviews[idx].type_name
+          }
+        }
+        
+        this.$toast?.add({ 
+          severity: 'success', 
+          summary: 'Обновлено', 
+          detail: 'Отзыв успешно изменён', 
+          life: 2000,
+          styleClass: 'my-success-toast'
+        })
+      }
+      
+      // ✅ Сбрасываем состояние редактирования
+      this.reviewToEdit = null
+      this.modalVisible = false
+      this.modalObject = null
+    },
+    
+    // ✅ Обработчик закрытия модалки
+    onModalClose(val) {
+      if (!val) {
+        this.modalObject = null
+        this.reviewToEdit = null
+        this.modalVisible = false
+      }
+    },
+    
+    getTypeIcon(typeName) {
+      const map = {
+        'камера видеонаблюдения': 'pi pi-video', 
+        'кафе': 'pi pi-map-marker', 
+        'фонарь': 'pi pi-lightbulb',
+        'скамейка': 'pi pi-map-marker', 
+        'парк': 'pi pi-map-marker', 
+        'беседка': 'pi pi-building-columns',
+        'остановка': 'pi pi-car', 
+        'детская площадка': 'pi pi-face-smile',
+        'спортивная площадка': 'pi pi-bolt',
+        'урна': 'pi pi-trash',
+        'мусорный контейнер': 'pi pi-trash',
+        'парковка': 'pi pi-car',
+        'пешеходный переход': 'pi pi-directions-alt',
+        'памятник': 'pi pi-flag',
+        'информационный стенд': 'pi pi-info-circle',
+        'цветник': 'pi pi-star',
+        'дорожка': 'pi pi-arrow-right',
+        'ограждение': 'pi pi-th-large'
+      }
+      
+      if (!typeName) return 'pi pi-map-marker'
+      
+      const key = Object.keys(map).find(k => typeName.toLowerCase().includes(k))
+      return map[key] || 'pi pi-map-marker'
+    },
+    
+    getCategorySeverity(category) {
+      const map = {
+        'проблема': 'danger', 'предложение': 'info', 'похвала': 'success', 'вопрос': 'warn',
+        'problem': 'danger', 'suggestion': 'info', 'praise': 'success'
+      }
+      return map[category?.toLowerCase()] || 'secondary'
+    },
+    
+    getStatusLabel(status) {
+      const map = { 'approved': 'Одобрен', 'pending': 'На модерации', 'rejected': 'Отклонён' }
+      return map[status] || status
+    },
+    
+    getStatusSeverity(status) {
+      const map = { 'approved': 'success', 'pending': 'warn', 'rejected': 'danger' }
+      return map[status] || 'secondary'
+    },
+    
+    formatDate(dateString) {
+      if (!dateString) return '—'
+      return new Date(dateString).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+    },
+    
+    handleLogout() {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
+      window.dispatchEvent(new CustomEvent('auth-change', { detail: { isAuthenticated: false } }))
+      this.$toast?.add({ severity: 'info', summary: 'Выход', detail: 'Вы вышли из системы', life: 2000, styleClass: 'my-info-toast' })
+      this.$router.push('/')
     }
   }
+}
 </script>
 
 <style scoped>

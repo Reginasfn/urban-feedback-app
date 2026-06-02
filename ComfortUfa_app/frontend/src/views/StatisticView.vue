@@ -250,7 +250,7 @@ const reviewsByCategoryChartOptions = {
           }
           
           const lines = ['']
-          lines.push('📍 Топ-5 объектов:')
+          lines.push('Топ-5 объектов:')
           
           category.top_objects.forEach((obj, idx) => {
             const name = obj.name && obj.name.trim() ? 
@@ -275,7 +275,6 @@ const ratingDistributionChartOptions = {
     tooltip: {
       ...chartOptions.plugins.tooltip,
       callbacks: {
-        // ⚠️ Форматирует тултип как: "1.0 ★\n\n📍 Топ-5 типов объектов:..."
         afterBody: function(context) {
           const index = context[0].dataIndex
           const ratingData = ratingDistribution.value[index]
@@ -285,7 +284,7 @@ const ratingDistributionChartOptions = {
           }
           
           const lines = [''] // Пустая строка для отступа
-          lines.push('📍 Топ-5 типов объектов:')
+          lines.push('Топ-5 типов объектов:')
           
           ratingData.top_types.forEach((item, idx) => {
             lines.push(`  ${idx + 1}. ${item.type} (${item.count})`)
