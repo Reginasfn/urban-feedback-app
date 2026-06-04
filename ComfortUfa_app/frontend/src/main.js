@@ -3,18 +3,17 @@ import { createApp, ref, shallowRef } from 'vue'
 import App from './App.vue'
 import router from './router'
 
-// ===== PRIMEVUE CORE =====
+// PRIMEVUE CORE
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 
-// ===== ИКОНКИ (единственный ручной импорт стилей) =====
+// ИКОНКИ
 import 'primeicons/primeicons.css'
 
-// ===== ТЕМА =====
+// ТЕМА
 import Aura from '@primevue/themes/aura'
-// Если не работает, попробуй: import Aura from '@primeuix/themes/aura'
 
-// ===== PRIMEVUE COMPONENTS =====
+// PRIMEVUE COMPONENTS
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Toast from 'primevue/toast'
@@ -31,10 +30,10 @@ import Divider from 'primevue/divider'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 
-// ===== ГЛОБАЛЬНЫЕ СТИЛИ =====
+// СТИЛИ УВЕДОМЛЕНИЙ
 import './styles/toasts.css'
 
-// ===== 🔥 ГЛОБАЛЬНОЕ СОСТОЯНИЕ МОДАЛКИ =====
+// СОСТОЯНИЕ МОДАЛКИ
 export const modalState = {
   visible: ref(false),
   currentObject: shallowRef(null),
@@ -70,24 +69,24 @@ window.__openObjectDetails = (id) => {
   modalState.open(id)
 }
 
-// ===== СОЗДАНИЕ ПРИЛОЖЕНИЯ =====
+// СОЗДАНИЕ ПРИЛОЖЕНИЯ
 const app = createApp(App)
 
-// ===== НАСТРОЙКА PRIMEVUE =====
+// НАСТРОЙКА PRIMEVUE
 app.use(PrimeVue, {
   theme: {
     preset: Aura,
     options: {
       darkModeSelector: false,
-      // Убираем cssLayer — он может конфликтовать с Vite
     }
   }
 })
-
+import Popover from 'primevue/popover'
+app.component('Popover', Popover)
 app.use(ToastService)
 app.use(router)
 
-// ===== ГЛОБАЛЬНАЯ РЕГИСТРАЦИЯ КОМПОНЕНТОВ =====
+// РЕГИСТРАЦИЯ КОМПОНЕНТОВ
 app.component('Button', Button)
 app.component('Card', Card)
 app.component('Toast', Toast)

@@ -1,12 +1,10 @@
 <!-- src/views/StatisticsView.vue -->
 <template>
   <div class="statistics-page">
-    <!-- ===== ЗАГОЛОВОК ===== -->
     <div class="page-header">
       <h1 class="page-title">Статистика платформы</h1>
       <p class="page-subtitle">Аналитика объектов, отзывов и активности пользователей</p>
       
-      <!-- Фильтр периода -->
       <div class="header-controls">
         <Dropdown 
           v-model="selectedPeriod" 
@@ -29,7 +27,6 @@
       </div>
     </div>
 
-    <!-- ===== ЗАГРУЗКА / ОШИБКА ===== -->
     <div v-if="loading" class="loading-state">
       <ProgressSpinner style="width: 60px; height: 60px" />
       <span>Загружаем аналитику...</span>
@@ -41,25 +38,75 @@
       <Button label="Повторить" severity="success" @click="loadAllStats" />
     </div>
 
-    <!-- ===== ДАШБОРД ===== -->
     <div v-else class="dashboard">
       
-      <!-- Карточки метрик -->
       <div class="metrics-grid">
-        <div class="metric-card primary">
+        <div class="metric-card primary" @click="toggleObjectsPopover">
           <div class="metric-icon"><i class="pi pi-map-marker"></i></div>
           <div class="metric-content">
             <span class="metric-value">{{ stats.total_objects?.toLocaleString('ru-RU') || '0' }}</span>
             <span class="metric-label">Всего объектов</span>
           </div>
+          
+          <Popover ref="objectsPopover" class="objects-popover">
+            <div class="popover-header">
+              <i class="pi pi-map-marker"></i>
+              <span>Объекты по типам</span>
+            </div>
+            <div class="objects-list">
+              <div 
+                v-for="(item, index) in objectsByTypeDetails" 
+                :key="index"
+                class="object-item"
+              >
+                <div class="object-info">
+                  <span class="object-name">{{ item.name }}</span>
+                  <span class="object-count">{{ item.count }}</span>
+                </div>
+                <div class="object-bar">
+                  <div 
+                    class="object-fill" 
+                    :style="{ width: item.percentage + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </Popover>
         </div>
-        <div class="metric-card warning">
+        
+        <div class="metric-card warning" @click="toggleProblemsPopover">
           <div class="metric-icon"><i class="pi pi-exclamation-triangle"></i></div>
           <div class="metric-content">
             <span class="metric-value">{{ stats.total_problems?.toLocaleString('ru-RU') || '0' }}</span>
             <span class="metric-label">Сообщено проблем</span>
           </div>
+          
+          <Popover ref="problemsPopover" class="problems-popover">
+            <div class="popover-header">
+              <i class="pi pi-exclamation-triangle"></i>
+              <span>Детализация проблем</span>
+            </div>
+            <div class="problems-list">
+              <div 
+                v-for="(problem, index) in problemDetails" 
+                :key="index"
+                class="problem-item"
+              >
+                <div class="problem-info">
+                  <span class="problem-name">{{ problem.name }}</span>
+                  <span class="problem-count">{{ problem.count }}</span>
+                </div>
+                <div class="problem-bar">
+                  <div 
+                    class="problem-fill" 
+                    :style="{ width: problem.percentage + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </Popover>
         </div>
+        
         <div class="metric-card info">
           <div class="metric-icon"><i class="pi pi-users"></i></div>
           <div class="metric-content">
@@ -67,61 +114,76 @@
             <span class="metric-label">Пользователей</span>
           </div>
         </div>
-        <div class="metric-card success">
+        <div class="metric-card success" @click="toggleFavoritesPopover">
           <div class="metric-icon"><i class="pi pi-heart"></i></div>
           <div class="metric-content">
             <span class="metric-value">{{ favoriteStats?.total || '0' }}</span>
             <span class="metric-label">В избранном</span>
           </div>
+          
+          <Popover ref="favoritesPopover" class="favorites-popover">
+            <div class="popover-header">
+              <i class="pi pi-heart"></i>
+              <span>Объекты в избранном по типам</span>
+            </div>
+            <div class="favorites-list">
+              <div 
+                v-for="(item, index) in favoritesByTypeDetails" 
+                :key="index"
+                class="favorite-item"
+              >
+                <div class="favorite-info">
+                  <span class="favorite-name">{{ item.name }}</span>
+                  <span class="favorite-count">{{ item.count }}</span>
+                </div>
+                <div class="favorite-bar">
+                  <div 
+                    class="favorite-fill" 
+                    :style="{ width: item.percentage + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </Popover>
         </div>
       </div>
 
-      <!-- Графики: верхний ряд -->
       <div class="charts-row">
-        <!-- Объекты по типам (Bar) -->
         <div class="chart-card">
           <h3 class="chart-title">Объекты по типам</h3>
           <Bar :data="objectsByTypeChart" :options="chartOptions" />
         </div>
         
-        <!-- Отзывы по категориям (Pie) -->
         <div class="chart-card">
           <h3 class="chart-title">Отзывы по категориям</h3>
           <Pie :data="reviewsByCategoryChart" :options="reviewsByCategoryChartOptions" />
         </div>
       </div>
 
-      <!-- Графики: средний ряд -->
       <div class="charts-row">
-        <!-- Топ объектов в избранном (Horizontal Bar) -->
         <div class="chart-card wide">
           <h3 class="chart-title">Топ объектов в избранном</h3>
           <Bar :data="topFavoritedChart" :options="{ ...chartOptions, indexAxis: 'y' }" />
         </div>
       </div>
 
-      <!-- Графики: нижний ряд -->
       <div class="charts-row">
-        <!-- Распределение оценок (Doughnut) -->
         <div class="chart-card">
           <h3 class="chart-title">Распределение оценок</h3>
           <Doughnut :data="ratingDistributionChart" :options="ratingDistributionChartOptions" />
         </div>
         
-        <!-- Топ по отзывам (Bar) -->
         <div class="chart-card">
           <h3 class="chart-title">Топ объектов по отзывам</h3>
           <Bar :data="topReviewedChart" :options="{ ...chartOptions, indexAxis: 'y' }" />
         </div>
       </div>
 
-      <!-- Активность по времени (Line) -->
       <div class="chart-card full-width">
         <h3 class="chart-title">Активность за период</h3>
         <Line :data="activityTimelineChart" :options="timelineChartOptions" />
       </div>
 
-      <!-- Таблица: Топ типов в избранном -->
       <div class="table-card">
         <h3 class="chart-title">Типы объектов в избранном</h3>
         <div class="stats-table">
@@ -170,15 +232,14 @@ import { Bar, Pie, Doughnut, Line } from 'vue-chartjs'
 import ProgressSpinner from 'primevue/progressspinner'
 import Dropdown from 'primevue/dropdown'
 import Button from 'primevue/button'
+import Popover from 'primevue/popover'
 import api from '@/services/api'
 
-// Регистрация компонентов Chart.js
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
   ArcElement, PointElement, LineElement, Filler
 )
 
-// ===== Состояние =====
 const stats = ref({ total_objects: 0, total_problems: 0, total_users: 0 })
 const favoriteStats = ref({ total: 0 })
 const objectsByType = ref([])
@@ -193,13 +254,16 @@ const loading = ref(true)
 const error = ref(null)
 const selectedPeriod = ref('all')
 
+const objectsPopover = ref(null)
+const problemsPopover = ref(null)
+const favoritesPopover = ref(null)
+
 const periodOptions = [
   { label: 'За всё время', value: 'all' },
   { label: 'За месяц', value: 'month' },
   { label: 'За неделю', value: 'week' }
 ]
 
-// ===== Настройки графиков =====
 const chartColors = {
   primary: '#168f04',
   primaryLight: '#22c55e',
@@ -211,7 +275,6 @@ const chartColors = {
   bg: 'rgba(22, 143, 4, 0.1)'
 }
 
-// 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ (БЕЗ кастомных тултипов)
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -233,7 +296,6 @@ const chartOptions = {
   }
 }
 
-// 2. СПЕЦИАЛЬНЫЕ НАСТРОЙКИ ТОЛЬКО ДЛЯ ОТЗЫВОВ ПО КАТЕГОРИЯМ (Pie)
 const reviewsByCategoryChartOptions = {
   ...chartOptions,
   plugins: {
@@ -267,7 +329,6 @@ const reviewsByCategoryChartOptions = {
   }
 }
 
-// 3. СПЕЦИАЛЬНЫЕ НАСТРОЙКИ ТОЛЬКО ДЛЯ РАСПРЕДЕЛЕНИЯ ОЦЕНОК (Doughnut)
 const ratingDistributionChartOptions = {
   ...chartOptions,
   plugins: {
@@ -283,7 +344,7 @@ const ratingDistributionChartOptions = {
             return []
           }
           
-          const lines = [''] // Пустая строка для отступа
+          const lines = ['']
           lines.push('Топ-5 типов объектов:')
           
           ratingData.top_types.forEach((item, idx) => {
@@ -316,7 +377,6 @@ const timelineChartOptions = {
   }
 }
 
-// ===== Данные для графиков =====
 const objectsByTypeChart = computed(() => ({
   labels: objectsByType.value.slice(0, 8).map(i => i.label),
   datasets: [{
@@ -396,7 +456,79 @@ const activityTimelineChart = computed(() => {
 
 const favoriteTypesData = computed(() => favoriteTypes.value.slice(0, 10))
 
-// ===== Загрузка данных =====
+const objectsByTypeDetails = computed(() => {
+  if (!objectsByType.value.length) return []
+  
+  const total = objectsByType.value.reduce((sum, item) => sum + item.value, 0)
+  
+  return objectsByType.value
+    .slice(0, 8)
+    .map(item => ({
+      name: item.label,
+      count: item.value,
+      percentage: total > 0 ? Math.round((item.value / total) * 100) : 0
+    }))
+    .sort((a, b) => b.count - a.count)
+})
+
+const problemDetails = computed(() => {
+  const problemCategory = reviewsByCategory.value.find(c => c.label === 'Проблема')
+  if (!problemCategory || !problemCategory.top_objects) return []
+  
+  const grouped = {}
+  problemCategory.top_objects.forEach(obj => {
+    const type = obj.type || 'Не указан'
+    if (grouped[type]) {
+      grouped[type] += obj.count
+    } else {
+      grouped[type] = obj.count
+    }
+  })
+  
+  const total = Object.values(grouped).reduce((sum, count) => sum + count, 0)
+  
+  return Object.entries(grouped)
+    .map(([name, count]) => ({
+      name,
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 100) : 0
+    }))
+    .sort((a, b) => b.count - a.count)
+})
+
+const favoritesByTypeDetails = computed(() => {
+  if (!favoriteTypes.value.length) return []
+  
+  const total = favoriteStats.value.total || 0
+  
+  return favoriteTypes.value
+    .slice(0, 8)
+    .map(item => ({
+      name: item.label,
+      count: item.value,
+      percentage: total > 0 ? Math.round((item.value / total) * 100) : 0
+    }))
+    .sort((a, b) => b.count - a.count)
+})
+
+const toggleObjectsPopover = (event) => {
+  if (objectsPopover.value) {
+    objectsPopover.value.toggle(event)
+  }
+}
+
+const toggleProblemsPopover = (event) => {
+  if (problemsPopover.value) {
+    problemsPopover.value.toggle(event)
+  }
+}
+
+const toggleFavoritesPopover = (event) => {
+  if (favoritesPopover.value) {
+    favoritesPopover.value.toggle(event)
+  }
+}
+
 const loadAllStats = async () => {
   loading.value = true
   error.value = null
@@ -431,7 +563,6 @@ const loadAllStats = async () => {
     topReviewed.value = reviewed.data
     activityTimeline.value = timeline.data
     
-    // Считаем общее количество в избранном
     favoriteStats.value.total = favTypes.data.reduce((sum, i) => sum + i.value, 0)
     
   } catch (err) {
@@ -442,7 +573,6 @@ const loadAllStats = async () => {
   }
 }
 
-// ===== МОНТАЖ =====
 onMounted(() => {
   loadAllStats()
 })
@@ -451,7 +581,6 @@ onMounted(() => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-/* ===== БАЗОВЫЕ СТИЛИ ===== */
 .statistics-page {
   min-height: 100vh;
   background: transparent;
@@ -460,12 +589,10 @@ onMounted(() => {
   color: #1a1a1a;
 }
 
-/* ===== ЗАГОЛОВОК ===== */
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  align-content: center;
   gap: 20px;
   margin-bottom: 24px;
   padding: 24px 32px;
@@ -501,7 +628,6 @@ onMounted(() => {
   border-radius: 12px !important;
 }
 
-/* ===== ЗАГРУЗКА / ОШИБКА ===== */
 .loading-state,
 .error-state {
   display: flex;
@@ -533,14 +659,12 @@ onMounted(() => {
   color: #dc2626;
 }
 
-/* ===== ДАШБОРД ===== */
 .dashboard {
   display: flex;
   flex-direction: column;
   gap: 30px;
 }
 
-/* Карточки метрик */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -562,6 +686,24 @@ onMounted(() => {
 .metric-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 12px 40px rgba(22, 143, 4, 0.15);
+}
+
+.metric-card.primary,
+.metric-card.warning,
+.metric-card.success {
+  cursor: pointer;
+}
+
+.metric-card.primary:hover {
+  box-shadow: 0 12px 40px rgba(22, 143, 4, 0.2);
+}
+
+.metric-card.warning:hover {
+  box-shadow: 0 12px 40px rgba(239, 68, 68, 0.2);
+}
+
+.metric-card.success:hover {
+  box-shadow: 0 12px 40px rgba(16, 185, 129, 0.2);
 }
 
 .metric-card.primary .metric-icon { background: rgba(22, 143, 4, 0.15); color: #168f04; }
@@ -598,7 +740,156 @@ onMounted(() => {
   font-weight: 500;
 }
 
-/* ===== ГРАФИКИ ===== */
+.objects-popover :deep(.p-popover-content),
+.problems-popover :deep(.p-popover-content),
+.favorites-popover :deep(.p-popover-content) {
+  padding: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15) !important;
+  overflow: hidden;
+  width: 320px !important;
+}
+
+.objects-popover :deep(.p-popover-content) {
+  border: 1px solid rgba(22, 143, 4, 0.2) !important;
+}
+
+.problems-popover :deep(.p-popover-content) {
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+}
+
+.favorites-popover :deep(.p-popover-content) {
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+}
+
+.popover-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.objects-popover .popover-header {
+  background: rgba(22, 143, 4, 0.1);
+  border-bottom: 1px solid rgba(22, 143, 4, 0.2);
+  color: #168f04;
+}
+
+.problems-popover .popover-header {
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+}
+
+.favorites-popover .popover-header {
+  background: rgba(16, 185, 129, 0.1);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.popover-header i {
+  font-size: 18px;
+}
+
+.objects-list,
+.problems-list,
+.favorites-list {
+  padding: 12px 20px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.object-item,
+.problem-item,
+.favorite-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.1);
+}
+
+.object-item:last-child,
+.problem-item:last-child,
+.favorite-item:last-child {
+  border-bottom: none;
+}
+
+.object-info,
+.problem-info,
+.favorite-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.object-name,
+.problem-name,
+.favorite-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.object-count,
+.problem-count,
+.favorite-count {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 20px;
+  min-width: 32px;
+  text-align: center;
+}
+
+.object-count {
+  color: #168f04;
+  background: rgba(22, 143, 4, 0.1);
+}
+
+.problem-count {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.favorite-count {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.object-bar,
+.problem-bar,
+.favorite-bar {
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.object-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #168f04, #22c55e);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.problem-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #dc2626, #f97316);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.favorite-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
 .charts-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -631,7 +922,6 @@ onMounted(() => {
   max-height: 300px;
 }
 
-/* ===== ТАБЛИЦА ===== */
 .table-card {
   padding: 24px;
   background: rgba(255, 255, 255, 0.9);
@@ -710,7 +1000,6 @@ onMounted(() => {
   transition: width 0.5s ease;
 }
 
-/* ===== СТИЛИ ДЛЯ PRIMEVUE ===== */
 :deep(.p-button) {
   border-radius: 10px !important;
   font-weight: 600 !important;
@@ -724,7 +1013,10 @@ onMounted(() => {
   border-radius: 12px !important;
 }
 
-/* ===== АДАПТИВ ===== */
+:deep(.p-popover) {
+  z-index: 1000 !important;
+}
+
 @media (max-width: 1024px) {
   .statistics-page { padding: 16px; }
   
@@ -750,23 +1042,11 @@ onMounted(() => {
   .table-row .progress-bar {
     display: none;
   }
-}
-
-@media (max-width: 640px) {
-  .metric-card {
-    padding: 16px;
-  }
   
-  .metric-value {
-    font-size: 22px;
-  }
-  
-  .chart-card {
-    padding: 16px;
-  }
-  
-  .chart-title {
-    font-size: 14px;
+  .objects-popover :deep(.p-popover-content),
+  .problems-popover :deep(.p-popover-content),
+  .favorites-popover :deep(.p-popover-content) {
+    width: 280px !important;
   }
 }
 </style>
