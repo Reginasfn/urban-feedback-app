@@ -1,3 +1,4 @@
+<!-- ComfortUfa_app\frontend\src\components\AppFooter.vue -->
 <template>
   <footer class="footer">
     <div class="container">

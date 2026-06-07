@@ -1,3 +1,4 @@
+<!-- ComfortUfa_app\frontend\src\views\HomeView.vue -->
 <template>
   <div class="home">
     <!-- ===================== ГЕРОЙ-СЕКЦИЯ ===================== -->

@@ -27,7 +27,7 @@
         </template>
 
         <form @submit.prevent="handleSubmit" class="login-form">
-            <!-- Email -->
+            <!-- Почта -->
             <div class="form-group">
                 <IftaLabel>
                     <i class="pi pi-envelope input-icon"></i>
@@ -42,7 +42,7 @@
                 </IftaLabel>
             </div>
 
-            <!-- Password -->
+            <!-- Пароль -->
             <div class="form-group">
                 <IftaLabel>
                     <i class="pi pi-lock input-icon"></i>
@@ -69,7 +69,7 @@
                 :disabled="isLoading"
             />
 
-            <!-- Ссылка на регистрацию -->
+            <!-- Кнопка регистрации -->
             <div class="register-link">
                 <span>Нет аккаунта?</span>
                 <Button

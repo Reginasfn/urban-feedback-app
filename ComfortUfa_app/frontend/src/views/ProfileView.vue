@@ -1,3 +1,4 @@
+<!-- ComfortUfa_app\frontend\src\views\ProfileView.vue -->
 <template>
   <div class="profile-page">
     

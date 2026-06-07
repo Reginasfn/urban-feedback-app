@@ -1,5 +1,4 @@
 <!-- frontend\src\components\AppHeader.vue -->
-
 <script>
 import LoginModal from '@/components/modals/LoginModal.vue'
 import RegisterModal from '@/components/modals/RegisterModal.vue'

@@ -1,3 +1,4 @@
+<!-- ComfortUfa_app\frontend\src\App.vue -->
 <script>
   import AppHeader from './components/AppHeader.vue'
   import AppFooter from './components/AppFooter.vue'
