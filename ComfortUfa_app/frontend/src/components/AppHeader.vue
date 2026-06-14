@@ -211,8 +211,8 @@ export default {
                 <div class="logo" @click="$router.push('/')">
                     <img src="@/assets/icons/logoIcon.svg" alt="ComfortUfa" class="logo-img">
                     <div class="logo-text">
-                        <span class="logo-title">Комфортная</span>
-                        <span class="logo-subtitle">Уфа</span>
+                        <span class="logo-title">Comfort</span>
+                        <span class="logo-subtitle">Ufa</span>
                     </div>
                 </div>
 
@@ -341,8 +341,8 @@ export default {
 }
 
 .logo-title {
-    font-size: 21px;
-    font-weight: 800;
+    font-size: 23px;
+    font-weight: 1000;
     color: #1e3a5f;
     letter-spacing: 1px;
 }

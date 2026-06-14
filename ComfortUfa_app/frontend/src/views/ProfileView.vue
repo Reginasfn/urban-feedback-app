@@ -1275,6 +1275,11 @@ export default {
   align-items: start;
 }
 
+.profile-sidebar{
+  display: grid;
+  gap: 15px;
+}
+
 /* Стили карточек PrimeVue */
 :deep(.p-card) {
   border-radius: 20px !important;
@@ -1377,68 +1382,20 @@ export default {
   background: transparent; 
 }
 
-:deep(.p-tabview) { 
-  width: 100%; 
-}
-
-/* Навигация вкладок */
-:deep(.p-tabview-nav) {
-  background: rgba(255, 255, 255, 0.85) !important;
-  backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(22, 143, 4, 0.2) !important;
-  border-radius: 16px 16px 0 0 !important;
-  padding: 8px !important;
-  gap: 6px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
-}
-
-/* Ссылки вкладок */
-:deep(.p-tabview-nav-link) {
-  border: none !important;
-  border-radius: 12px !important;
-  color: #64748b !important;
-  font-weight: 600 !important;
-  font-size: 14px !important;
-  padding: 12px 28px !important;
-  transition: all 0.3s ease !important;
-  background: transparent !important;
-  position: relative;
-}
-
-/* Эффект при наведении */
-:deep(.p-tabview-nav-link:hover) {
-  color: #168f04 !important;
-  background: rgba(22, 143, 4, 0.08) !important;
-  transform: translateY(-1px);
-}
-
-/* Активная вкладка */
-:deep(.p-tabview-nav-link.p-highlight) {
-  color: #fff !important;
-  background: linear-gradient(135deg, #168f04, #0d6f03) !important;
-  font-weight: 700 !important;
-  box-shadow: 0 4px 16px rgba(22, 143, 4, 0.3) !important;
-}
-
-/* Панель контента вкладок */
+/* Панель контента вкладок - ПРОЗРАЧНАЯ */
 :deep(.p-tabview-panels) {
-  background: rgba(255, 255, 255, 0.9) !important;
-  backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(22, 143, 4, 0.15) !important;
-  border-top: none !important;
-  border-radius: 0 0 16px 16px !important;
+  background: transparent !important; /* ← И ЭТО */
+  backdrop-filter: none !important;
   padding: 24px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06) !important;
+  box-shadow: none !important;
 }
 
-/* Анимация появления контента */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+:deep(.p-tabview-tablist){
+  border-radius: 10px;
+  width: 1112px;
+  margin-left: 23px;
 }
-:deep(.p-tabview-panels) {
-  animation: fadeIn 0.3s ease;
-}
+
 
 /* ===== ПАНЕЛЬ ФИЛЬТРОВ ===== */
 .filters-bar {

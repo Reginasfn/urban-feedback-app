@@ -3,7 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import MapView from '../views/MapView.vue'
 import ProfileView from '../views/ProfileView.vue' 
-import AdminView from '../views/AdminView.vue'
 import AboutView from '../views/AboutView.vue'
 import FavoritesView from '../views/FavoritesView.vue'
 import StatisticView from '../views/StatisticView.vue'
@@ -14,8 +13,7 @@ const routes = [
   { path: '/profile', name: 'Profile', component: ProfileView, meta: { requiresAuth: true } },
   { path: '/favorites', name: 'Favorites', component: FavoritesView, meta: { requiresAuth: true } },
   { path: '/statistics', name: 'Statistics', component: StatisticView },
-  { path: '/admin', name: 'Admin', component: AdminView },
-  { path: '/about', name: 'About', component: AboutView },
+  { path: '/about', name: 'About', component: AboutView }
 ]
 
 const router = createRouter({

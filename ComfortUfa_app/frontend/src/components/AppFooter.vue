@@ -13,7 +13,9 @@
         <div class="footer-section">
           <h4 class="section-title">Разделы</h4>
           <router-link to="/map" class="footer-link">Карта</router-link>
-          <router-link to="/admin" class="footer-link">Админ-панель</router-link>
+          <router-link to="/favorites" class="footer-link">Избранное</router-link>
+          <router-link to="/statistics" class="footer-link">Статистика</router-link>
+          <router-link to="/profile" class="footer-link">Личный профиль</router-link>
         </div>
         
         <!-- Информация -->

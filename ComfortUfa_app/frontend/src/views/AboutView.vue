@@ -80,7 +80,7 @@ export default {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: #1a1a1a;
   line-height: 1.6;
-  max-width: 800px;
+  max-width: 1150px;
   margin: 0 auto;
   padding: 20px 0px 100px;
 }

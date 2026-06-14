@@ -190,7 +190,7 @@ export function useGeolocation() {
       console.log('[GeoMarker] Маркер-заглушка добавлен')
     }
 
-    success.value = `Показываем примерное местоположение: ${FALLBACK_ADDRESS}`
+    success.value = `Примерное местоположение: ${FALLBACK_ADDRESS}`
     console.log('[Geo] Заглушка активирована')
 
     loading.value = false
